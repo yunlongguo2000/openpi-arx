@@ -14,6 +14,9 @@ This is an experiment: $\pi_0$ was developed for our own robots, which differ fr
 ## openpi on Franka
 Details about deploy openpi models on Franka can be found [HERE](PI05_FRANKA.md).
 
+## openpi on ARX LIFT2
+Details about finetuning and deploying openpi models on the ARX LIFT2 dual-arm mobile robot can be found [HERE](PI05_ARX.md).
+
 
 ## Updates
 

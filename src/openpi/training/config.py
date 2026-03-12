@@ -21,6 +21,7 @@ import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
 import openpi.policies.franka_policy as franka_policy
+import openpi.policies.arx_policy as arx_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
@@ -528,6 +529,78 @@ class LeRobotFrankaDataConfig(DataConfigFactory):
         model_transforms = ModelTransformFactory()(model_config)
 
         # We return all data transforms for training and inference. No need to change anything here.
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotArxDataConfig(DataConfigFactory):
+    """Data config for ARX LIFT2 dual-arm mobile robot in LeRobot format.
+
+    Action (32D): left_joint(7) + right_joint(7) + left_tcp(6) + right_tcp(6)
+                  + left_gripper(1) + right_gripper(1) + chassis(4)
+    State (59D):  left(pos7+vel7+cur7) + right(pos7+vel7+cur7)
+                  + left_tcp(6) + right_tcp(6) + grippers(2) + chassis(3)
+    Images:       left_wrist(240x424) + right_wrist(240x424)
+    """
+
+    # Whether to apply delta action transform for joints and tcp
+    use_delta_joint_actions: bool = True
+    # Default language prompt
+    default_prompt: str | None = None
+    # Action sequence keys
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        # Repack: map LeRobot dataset keys → inference environment keys
+        repack_transform = _transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "state": "observation.state",
+                        "images": {
+                            "left_wrist": "observation.images.left_wrist_image",
+                            "right_wrist": "observation.images.right_wrist_image",
+                        },
+                        "actions": "action",
+                        "prompt": "task",
+                    }
+                )
+            ]
+        )
+
+        # Data transforms: ARX-specific I/O conversion
+        data_transforms = _transforms.Group(
+            inputs=[arx_policy.ArxInputs()],
+            outputs=[arx_policy.ArxOutputs()],
+        )
+
+        # Delta actions: joints(14) + tcp(12) = delta, grippers(2) + chassis(4) = absolute
+        if self.use_delta_joint_actions:
+            delta_action_mask = _transforms.make_bool_mask(
+                7,   # left_joint: delta
+                7,   # right_joint: delta
+                6,   # left_tcp: delta
+                6,   # right_tcp: delta
+                -1,  # left_gripper: absolute
+                -1,  # right_gripper: absolute
+                -4,  # chassis (vx, vy, wz, height): absolute
+            )
+            data_transforms = data_transforms.push(
+                inputs=[_transforms.DeltaActions(delta_action_mask)],
+                outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+            )
+
+        model_transforms = ModelTransformFactory(
+            default_prompt=self.default_prompt
+        )(model_config)
+
         return dataclasses.replace(
             self.create_base_config(assets_dirs, model_config),
             repack_transforms=repack_transform,
@@ -1075,6 +1148,51 @@ _CONFIGS = [
     # RoboArena & PolaRiS configs.
     *roboarena_config.get_roboarena_configs(),
     *polaris_config.get_polaris_configs(),
+    #
+    # ARX LIFT2 dual-arm mobile robot configs.
+    #
+    TrainConfig(
+        name="pi05_arx",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=32,
+            action_horizon=16,
+        ),
+        data=LeRobotArxDataConfig(
+            repo_id="deepcybo/arx_lift_task_20260312_v03",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "gs://openpi-assets/checkpoints/pi05_base/params",
+        ),
+        num_train_steps=30_000,
+        batch_size=32,
+    ),
+    TrainConfig(
+        name="pi05_arx_lora",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=32,
+            action_horizon=16,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotArxDataConfig(
+            repo_id="deepcybo/arx_lift_task_20260312_v03",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "gs://openpi-assets/checkpoints/pi05_base/params",
+        ),
+        freeze_filter=pi0_config.Pi0Config(
+            pi05=True,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        num_train_steps=30_000,
+        batch_size=32,
+    ),
 ]
 
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
