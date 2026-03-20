@@ -78,7 +78,7 @@ apt install -y ffmpeg libavutil-dev libavcodec-dev libavformat-dev
 ### 3. Additional dependencies
 
 The inference script depends on `ArxROS2RPCClient` (ZMQ + msgpack bridge to the robot ROS2 node).
-Make sure `lerobot_data_collection/lerobot_ur_dual_vrteleop/` is present alongside this repo (or adjust `_ARX_BRIDGE_PATH` in `examples/arx/inference_arx.py`).
+Make sure `lerobot_data_collection/arx_vr_data_collection/` is present alongside this repo (or adjust `_ARX_BRIDGE_PATH` in `examples/arx/inference_arx.py`).
 
 ---
 
@@ -217,4 +217,4 @@ The inference loop will:
 | Action dimension mismatch | `ArxOutputs.action_dim` must be 32; verify dataset `info.json` matches |
 | Training OOM | Use `pi05_arx_lora` config, or set `--fsdp-devices <n>` for multi-GPU |
 | Images all black during inference | Expected until RealSense integration is complete; `image_mask=False` tells model to ignore them |
-| `ArxROS2RPCClient` import error | Check `_ARX_BRIDGE_PATH` in `inference_arx.py` points to `lerobot_ur_dual_vrteleop/` |
+| `ArxROS2RPCClient` import error | Check `_ARX_BRIDGE_PATH` in `inference_arx.py` points to `arx_vr_data_collection/` |
