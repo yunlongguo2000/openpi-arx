@@ -1159,11 +1159,11 @@ _CONFIGS = [
             action_horizon=16,
         ),
         data=LeRobotArxDataConfig(
-            repo_id="deepcybo/arx_lift_task_20260312_v03",
+            repo_id="deepcybo/arx_lift_task_20260319_v31",
             base_config=DataConfig(prompt_from_task=True),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader(
-            "gs://openpi-assets/checkpoints/pi05_base/params",
+            "/home/deepcybo/models/pi05_models/pi05_base/params",
         ),
         num_train_steps=30_000,
         batch_size=32,
@@ -1178,11 +1178,11 @@ _CONFIGS = [
             action_expert_variant="gemma_300m_lora",
         ),
         data=LeRobotArxDataConfig(
-            repo_id="deepcybo/arx_lift_task_20260312_v03",
+            repo_id="deepcybo/arx_lift_task_20260319_v31",
             base_config=DataConfig(prompt_from_task=True),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader(
-            "gs://openpi-assets/checkpoints/pi05_base/params",
+            "/home/deepcybo/models/pi05_models/pi05_base/params",
         ),
         freeze_filter=pi0_config.Pi0Config(
             pi05=True,

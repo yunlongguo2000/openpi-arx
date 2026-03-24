@@ -51,7 +51,7 @@ import yaml
 
 # ArxROS2RPCClient 位于 ARX_new 工程中，需要加入路径
 _ARX_BRIDGE_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..",
+    os.path.dirname(__file__), "..", "..", "..",
     "lerobot_data_collection", "arx_vr_data_collection",
 )
 if _ARX_BRIDGE_PATH not in sys.path:
