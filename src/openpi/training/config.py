@@ -546,7 +546,7 @@ class LeRobotArxDataConfig(DataConfigFactory):
                   + left_gripper(1) + right_gripper(1) + chassis(4)
     State (59D):  left(pos7+vel7+cur7) + right(pos7+vel7+cur7)
                   + left_tcp(6) + right_tcp(6) + grippers(2) + chassis(3)
-    Images:       left_wrist(240x424) + right_wrist(240x424)
+    Images:       head(240x424) + left_wrist(240x424) + right_wrist(240x424)
     """
 
     # Whether to apply delta action transform for joints and tcp
@@ -565,6 +565,7 @@ class LeRobotArxDataConfig(DataConfigFactory):
                     {
                         "state": "observation.state",
                         "images": {
+                            "head": "observation.images.head_image",
                             "left_wrist": "observation.images.left_wrist_image",
                             "right_wrist": "observation.images.right_wrist_image",
                         },

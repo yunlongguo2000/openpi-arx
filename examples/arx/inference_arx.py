@@ -2,7 +2,7 @@
 ARX Pi0.5 推理主循环
 
 在机器人端运行，负责:
-  1. 从机器人获取观测 (59D state + 2张图像)
+  1. 从机器人获取观测 (59D state + 3张图像)
   2. 通过 WebSocket 发给 Policy Server
   3. 接收 action chunk [action_horizon, 32]
   4. 逐步执行动作到机器人
@@ -129,7 +129,7 @@ class ArxInference:
         Returns:
             dict with keys matching ArxInputs 期望的格式:
               - "state": np.ndarray[59]
-              - "images": {"left_wrist": HWC uint8, "right_wrist": HWC uint8}
+              - "images": {"head": HWC uint8, "left_wrist": HWC uint8, "right_wrist": HWC uint8}
               - "prompt": str
         """
         # 获取完整机器人状态
@@ -143,17 +143,20 @@ class ArxInference:
         # 获取相机图像
         if self.cameras_enabled:
             # TODO: 从 RealSense 获取图像
+            # head_img = self.head_camera.read()
             # left_img = self.left_camera.read()
             # right_img = self.right_camera.read()
             pass
         else:
             # 占位黑图 — Policy Server 的 ArxInputs 会设置 image_mask=False
+            head_img = np.zeros((240, 424, 3), dtype=np.uint8)
             left_img = np.zeros((240, 424, 3), dtype=np.uint8)
             right_img = np.zeros((240, 424, 3), dtype=np.uint8)
 
         obs = {
             "state": state_59d,
             "images": {
+                "head": head_img,
                 "left_wrist": left_img,
                 "right_wrist": right_img,
             },

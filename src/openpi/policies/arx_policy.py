@@ -27,6 +27,7 @@ ARX 数据维度定义 (来自 LeRobot 数据集 info.json):
     [56:59] chassis (3)          - (height, head_yaw, head_pitch)
 
   Images:
+    head_image:        (240, 424, 3) video/av1
     left_wrist_image:  (240, 424, 3) video/av1
     right_wrist_image: (240, 424, 3) video/av1
 """
@@ -45,6 +46,7 @@ def make_arx_example() -> dict:
     return {
         "state": np.ones((59,), dtype=np.float32),
         "images": {
+            "head": np.random.randint(256, size=(3, 240, 424), dtype=np.uint8),
             "left_wrist": np.random.randint(256, size=(3, 240, 424), dtype=np.uint8),
             "right_wrist": np.random.randint(256, size=(3, 240, 424), dtype=np.uint8),
         },
@@ -70,12 +72,12 @@ class ArxInputs(transforms.DataTransformFn):
 
     Expected inputs (from inference environment or dataset after repack):
       - state: np.ndarray[59]
-      - images: dict with 'left_wrist' and/or 'right_wrist'
+      - images: dict with 'head', 'left_wrist' and/or 'right_wrist'
       - actions: np.ndarray[action_horizon, 32] (training only)
       - prompt: str (language instruction)
     """
 
-    EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("left_wrist", "right_wrist")
+    EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("head", "left_wrist", "right_wrist")
 
     def __call__(self, data: dict) -> dict:
         # Parse state
@@ -85,21 +87,20 @@ class ArxInputs(transforms.DataTransformFn):
         in_images = data.get("images", {})
         parsed_images = {name: _parse_image(in_images[name]) for name in in_images}
 
-        # ARX has no exterior camera → base_0_rgb is zero-filled with mask=False
-        # Use left_wrist as reference for shape, or create a default
-        if "left_wrist" in parsed_images:
-            ref_shape = parsed_images["left_wrist"].shape
-        elif "right_wrist" in parsed_images:
-            ref_shape = parsed_images["right_wrist"].shape
-        else:
-            ref_shape = (240, 424, 3)
+        # Determine reference shape from any available camera
+        ref_shape = (240, 424, 3)
+        for name in ("head", "left_wrist", "right_wrist"):
+            if name in parsed_images:
+                ref_shape = parsed_images[name].shape
+                break
 
-        images = {
-            "base_0_rgb": np.zeros(ref_shape, dtype=np.uint8),
-        }
-        image_masks = {
-            "base_0_rgb": np.False_,
-        }
+        # Map head camera to base_0_rgb (exterior view)
+        if "head" in parsed_images:
+            images = {"base_0_rgb": parsed_images["head"]}
+            image_masks = {"base_0_rgb": np.True_}
+        else:
+            images = {"base_0_rgb": np.zeros(ref_shape, dtype=np.uint8)}
+            image_masks = {"base_0_rgb": np.False_}
 
         # Map wrist cameras to model slots
         wrist_mapping = {
