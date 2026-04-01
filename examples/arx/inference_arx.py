@@ -49,13 +49,10 @@ import time
 import numpy as np
 import yaml
 
-# ArxROS2RPCClient 位于 ARX_new 工程中，需要加入路径
-_ARX_BRIDGE_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..", "..",
-    "lerobot_data_collection", "arx_vr_data_collection",
-)
-if _ARX_BRIDGE_PATH not in sys.path:
-    sys.path.insert(0, _ARX_BRIDGE_PATH)
+# ArxROS2RPCClient 位于 ARX_new 工程根目录下的 ros2_bridge/
+_ARX_ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "..")
+if _ARX_ROOT not in sys.path:
+    sys.path.insert(0, _ARX_ROOT)
 
 from openpi_client import websocket_client_policy
 from ros2_bridge.arx_ros2_rpc_client import ArxROS2RPCClient
