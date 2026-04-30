@@ -2,34 +2,7 @@
 ARX LIFT2 双臂移动机器人 Pi0.5 Policy Transform
 
 将 ARX 机器人的观测/动作格式转换为 openpi 模型的标准格式。
-
-ARX 数据维度定义 (来自 LeRobot 数据集 info.json):
-  Action (32D):
-    [0:7]   left_joint_pos (7)   - 左臂6关节+夹爪关节
-    [7:14]  right_joint_pos (7)  - 右臂6关节+夹爪关节
-    [14:20] left_tcp_pose (6)    - 左TCP位姿 (x,y,z,roll,pitch,yaw)
-    [20:26] right_tcp_pose (6)   - 右TCP位姿
-    [26]    left_gripper (1)     - 左夹爪位置
-    [27]    right_gripper (1)    - 右夹爪位置
-    [28:32] chassis (4)          - 底盘 (vx, vy, wz, height)
-
-  State (59D):
-    [0:7]   left_joint_pos (7)
-    [7:14]  left_joint_vel (7)
-    [14:21] left_joint_cur (7)
-    [21:28] right_joint_pos (7)
-    [28:35] right_joint_vel (7)
-    [35:42] right_joint_cur (7)
-    [42:48] left_tcp_pose (6)
-    [48:54] right_tcp_pose (6)
-    [54]    left_gripper (1)
-    [55]    right_gripper (1)
-    [56:59] chassis (3)          - (height, head_yaw, head_pitch)
-
-  Images:
-    head_image:        (240, 424, 3) video/av1
-    left_wrist_image:  (240, 424, 3) video/av1
-    right_wrist_image: (240, 424, 3) video/av1
+融合了基于全身关节控制（Full Joint + Chassis）和基于末端增量控制（Delta EE）的两种模式。
 """
 
 import dataclasses
@@ -39,9 +12,10 @@ import einops
 import numpy as np
 
 from openpi import transforms
+from openpi.models import model as _model
 
-
-def make_arx_example() -> dict:
+# === 1. Full Joint & Chassis Mode (32D Action, 59D State) ===
+def make_arx_full_example() -> dict:
     """Creates a random input example for the ARX policy (for warmup)."""
     return {
         "state": np.ones((59,), dtype=np.float32),
@@ -53,8 +27,7 @@ def make_arx_example() -> dict:
         "prompt": "pick up the object",
     }
 
-
-def _parse_image(img: np.ndarray) -> np.ndarray:
+def _parse_image(img) -> np.ndarray:
     """Parse image to HWC uint8 format."""
     img = np.asarray(img)
     # Convert float images to uint8
@@ -65,36 +38,24 @@ def _parse_image(img: np.ndarray) -> np.ndarray:
         img = einops.rearrange(img, "c h w -> h w c")
     return img
 
-
 @dataclasses.dataclass(frozen=True)
-class ArxInputs(transforms.DataTransformFn):
-    """Convert ARX observations to openpi model input format.
-
-    Expected inputs (from inference environment or dataset after repack):
-      - state: np.ndarray[59]
-      - images: dict with 'head', 'left_wrist' and/or 'right_wrist'
-      - actions: np.ndarray[action_horizon, 32] (training only)
-      - prompt: str (language instruction)
-    """
+class ArxFullInputs(transforms.DataTransformFn):
+    """Convert ARX full observations to openpi model input format."""
 
     EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("head", "left_wrist", "right_wrist")
 
     def __call__(self, data: dict) -> dict:
-        # Parse state
         state = np.asarray(data["state"], dtype=np.float32)
 
-        # Parse images
         in_images = data.get("images", {})
         parsed_images = {name: _parse_image(in_images[name]) for name in in_images}
 
-        # Determine reference shape from any available camera
         ref_shape = (240, 424, 3)
         for name in ("head", "left_wrist", "right_wrist"):
             if name in parsed_images:
                 ref_shape = parsed_images[name].shape
                 break
 
-        # Map head camera to base_0_rgb (exterior view)
         if "head" in parsed_images:
             images = {"base_0_rgb": parsed_images["head"]}
             image_masks = {"base_0_rgb": np.True_}
@@ -102,7 +63,6 @@ class ArxInputs(transforms.DataTransformFn):
             images = {"base_0_rgb": np.zeros(ref_shape, dtype=np.uint8)}
             image_masks = {"base_0_rgb": np.False_}
 
-        # Map wrist cameras to model slots
         wrist_mapping = {
             "left_wrist_0_rgb": "left_wrist",
             "right_wrist_0_rgb": "right_wrist",
@@ -121,25 +81,104 @@ class ArxInputs(transforms.DataTransformFn):
             "state": state,
         }
 
-        # Actions are only available during training
         if "actions" in data:
             inputs["actions"] = np.asarray(data["actions"], dtype=np.float32)
 
         if "prompt" in data:
-            inputs["prompt"] = data["prompt"]
+            prompt = data["prompt"]
+            if isinstance(prompt, bytes):
+                prompt = prompt.decode("utf-8")
+            inputs["prompt"] = prompt
 
         return inputs
 
-
 @dataclasses.dataclass(frozen=True)
-class ArxOutputs(transforms.DataTransformFn):
-    """Convert model output actions to ARX 32D action format.
-
-    Model outputs [action_horizon, padded_action_dim], we take the first 32 dims.
-    """
+class ArxFullOutputs(transforms.DataTransformFn):
+    """Convert model output actions to ARX 32D full action format."""
 
     action_dim: int = 32
 
     def __call__(self, data: dict) -> dict:
-        actions = np.asarray(data["actions"][:, :self.action_dim])
+        actions = np.asarray(data["actions"][:, :self.action_dim], dtype=np.float32)
         return {"actions": actions}
+
+
+# === 2. Delta End-Effector Mode (14D Action, 14D State) ===
+ARX_STATE_DIM = 14
+ARX_ACTION_DIM = 14
+# The ARX LeRobot recorder stores the full robot state as:
+# left joints 6D, right joints 6D, left EE pose 6D, right EE pose 6D,
+# left gripper state/cmd, right gripper state/cmd. The policy consumes only
+# EE poses and gripper states.
+ARX_FULL_STATE_TO_POLICY_INDICES = (*range(12, 24), 24, 26)
+
+def make_arx_delta_ee_example() -> dict:
+    """Creates a random input example for the ARX R5 dual-arm policy."""
+    return {
+        "observation/state": np.random.rand(ARX_STATE_DIM),
+        "observation/image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
+        "observation/wrist_image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
+        "observation/right_wrist_image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
+        "prompt": "pick up the object",
+    }
+
+def _parse_ee_state(state) -> np.ndarray:
+    state = np.asarray(state, dtype=np.float32)
+    if state.shape[-1] == ARX_STATE_DIM:
+        return state
+    if state.shape[-1] <= max(ARX_FULL_STATE_TO_POLICY_INDICES):
+        raise ValueError(
+            f"ARX state must be either {ARX_STATE_DIM}D policy state or full LeRobot state with at least "
+            f"{max(ARX_FULL_STATE_TO_POLICY_INDICES) + 1} dims, got shape {state.shape}"
+        )
+    return np.take(state, ARX_FULL_STATE_TO_POLICY_INDICES, axis=-1)
+
+@dataclasses.dataclass(frozen=True)
+class ArxDeltaEEInputs(transforms.DataTransformFn):
+    """Convert ARX EE observations into the common model input format."""
+
+    model_type: _model.ModelType
+    state_key: str = "observation/state"
+    base_image_key: str = "observation/image"
+    left_wrist_image_key: str = "observation/wrist_image"
+    right_wrist_image_key: str = "observation/right_wrist_image"
+    prompt_key: str = "prompt"
+
+    def __call__(self, data: dict) -> dict:
+        base_image = _parse_image(data[self.base_image_key])
+        left_wrist_image = _parse_image(data[self.left_wrist_image_key])
+        right_wrist_image = _parse_image(data[self.right_wrist_image_key])
+
+        inputs = {
+            "state": _parse_ee_state(data[self.state_key]),
+            "image": {
+                "base_0_rgb": base_image,
+                "left_wrist_0_rgb": left_wrist_image,
+                "right_wrist_0_rgb": right_wrist_image,
+            },
+            "image_mask": {
+                "base_0_rgb": np.True_,
+                "left_wrist_0_rgb": np.True_,
+                "right_wrist_0_rgb": np.True_,
+            },
+        }
+
+        if "actions" in data:
+            inputs["actions"] = np.asarray(data["actions"], dtype=np.float32)
+
+        if self.prompt_key in data:
+            prompt = data[self.prompt_key]
+            if isinstance(prompt, bytes):
+                prompt = prompt.decode("utf-8")
+            inputs["prompt"] = prompt
+
+        return inputs
+
+@dataclasses.dataclass(frozen=True)
+class ArxDeltaEEOutputs(transforms.DataTransformFn):
+    """Convert model outputs back to the 14D ARX action format."""
+
+    action_dim: int = ARX_ACTION_DIM
+
+    def __call__(self, data: dict) -> dict:
+        return {"actions": np.asarray(data["actions"][:, : self.action_dim], dtype=np.float32)}
