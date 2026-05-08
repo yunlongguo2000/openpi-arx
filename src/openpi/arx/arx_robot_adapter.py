@@ -4,6 +4,7 @@ import dataclasses
 import logging
 import os
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -21,6 +22,16 @@ CAMERA_ENV_MAP = {
     "left_wrist_image": "OPENPI_ARX_LEFT_WRIST_CAMERA",
     "right_wrist_image": "OPENPI_ARX_RIGHT_WRIST_CAMERA",
 }
+
+# Optional calibration import
+try:
+    from algorithms.calibration import load_calibration_params
+    from algorithms.calibration.board_utils import create_gridboard, create_detector
+    from algorithms.calibration.pose_estimation import compute_head_camera_pose, pose_to_7dof
+
+    _CALIB_AVAILABLE = True
+except ImportError:
+    _CALIB_AVAILABLE = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -120,7 +131,10 @@ class DummyCameraRig:
 
 
 class RealSenseCameraRig:
-    """Three-camera local RealSense rig for ARX inference."""
+    """Three-camera local RealSense rig for ARX inference.
+
+    Supports optional head camera extrinsic calibration via a desktop AprilTag board.
+    """
 
     def __init__(
         self,
@@ -129,12 +143,53 @@ class RealSenseCameraRig:
         height: int = 480,
         fps: int = 30,
         serials: Mapping[str, str] | None = None,
+        enable_calibration: bool = False,
+        calibration_params_path: str = "",
     ):
         self._width = width
         self._height = height
         self._fps = fps
         self._serials = self._resolve_serials(serials)
         self._cameras = None
+        self._calib_enabled = enable_calibration and _CALIB_AVAILABLE
+        self._calib_detector = None
+        self._calib_board = None
+        self._calib_camera_matrix = None
+        self._calib_dist_coeffs = None
+        self._calib_T_board_to_world = np.eye(4)
+        if self._calib_enabled:
+            try:
+                params = load_calibration_params(calibration_params_path)
+                bc = params["calibration_board"]
+                self._calib_board = create_gridboard(
+                    markers_x=bc["markers_x"], markers_y=bc["markers_y"],
+                    marker_length_m=bc["marker_length_m"],
+                    marker_separation_m=bc["marker_separation_m"],
+                    dictionary_name=bc["dictionary"],
+                )
+                self._calib_detector = create_detector(bc["dictionary"])
+                cc = params["cameras"]["head"]["intrinsics"]
+                self._calib_camera_matrix = np.array(
+                    [[cc["fx"], 0, cc["cx"]], [0, cc["fy"], cc["cy"]], [0, 0, 1]],
+                    dtype=np.float64,
+                )
+                self._calib_dist_coeffs = np.array(cc["dist_coeffs"], dtype=np.float64)
+                tw = params["T_board_to_world"]
+                if tw["translation_m"] != [0.0, 0.0, 0.0] or tw["quaternion_xyzw"] != [0.0, 0.0, 0.0, 1.0]:
+                    t = tw["translation_m"]
+                    q = tw["quaternion_xyzw"]
+                    qw, qx, qy, qz = q[3], q[0], q[1], q[2]
+                    R = np.array([
+                        [1 - 2*qy*qy - 2*qz*qz, 2*qx*qy - 2*qz*qw, 2*qx*qz + 2*qy*qw],
+                        [2*qx*qy + 2*qz*qw, 1 - 2*qx*qx - 2*qz*qz, 2*qy*qz - 2*qx*qw],
+                        [2*qx*qz - 2*qy*qw, 2*qy*qz + 2*qx*qw, 1 - 2*qx*qx - 2*qy*qy],
+                    ], dtype=np.float64)
+                    self._calib_T_board_to_world[:3, :3] = R
+                    self._calib_T_board_to_world[:3, 3] = t
+                log.info("[CALIB] RealSenseCameraRig calibration loaded")
+            except Exception as e:
+                log.warning("[CALIB] Failed to load calibration: %s", e)
+                self._calib_enabled = False
 
     def _resolve_serials(self, serials: Mapping[str, str] | None) -> dict[str, str]:
         if serials is not None:
@@ -196,7 +251,26 @@ class RealSenseCameraRig:
     def read(self) -> dict[str, np.ndarray]:
         if self._cameras is None:
             raise RuntimeError("Camera rig is not connected")
-        return {key: np.asarray(camera.read(), dtype=np.uint8) for key, camera in self._cameras.items()}
+        result = {key: np.asarray(camera.read(), dtype=np.uint8) for key, camera in self._cameras.items()}
+
+        # Optional: detect calibration board in head image
+        if self._calib_enabled and "head_image" in result:
+            head_img = result["head_image"]
+            T_cam_world, num_markers = compute_head_camera_pose(
+                head_img,
+                self._calib_detector,
+                self._calib_board,
+                self._calib_camera_matrix,
+                self._calib_dist_coeffs,
+                self._calib_T_board_to_world,
+            )
+            if T_cam_world is not None:
+                result["head_camera_pose"] = T_cam_world
+                log.debug("[CALIB] Detected %d markers, pose computed", num_markers)
+            else:
+                log.debug("[CALIB] Not enough markers detected (%d < 3)", num_markers)
+
+        return result
 
 
 class ArxRobotAdapter:
@@ -289,9 +363,12 @@ class ArxRobotAdapter:
         if self._camera_rig is None:
             raise RuntimeError("Camera rig is not configured")
         images = self._camera_rig.read()
-        
+
+        if "head_camera_pose" in images:
+            log.info("[CALIB] Head camera pose available (active calibration)")
+
         state = state_14d_from_full_state(full_state) if is_14d else state_59d_from_full_state(full_state)
-        
+
         return make_arx_observation(
             state,
             images,

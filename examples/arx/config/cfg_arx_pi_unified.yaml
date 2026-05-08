@@ -32,5 +32,10 @@ control:
   action_fps: 15          # Hz
   max_steps: 0            # 0 for infinite
 
+# Head camera extrinsic calibration
+calibration:
+  enabled: false                    # set true to enable board detection
+  params_path: ""                   # auto-detect (algorithms/calibration/calibration_params.yaml)
+
 # Task
 task_description: "pick up the object"
