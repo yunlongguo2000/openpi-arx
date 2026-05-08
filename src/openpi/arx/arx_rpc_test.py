@@ -2,6 +2,7 @@ import numpy as np
 
 from openpi.arx.arx_ros2_rpc_client import ArxROS2RPCClient
 from openpi.arx.arx_ros2_rpc_server import ArxROS2RPCServer
+from openpi.arx.arx_ros2_rpc_server import resolve_robot_profile
 
 
 class _FakeRPCClient:
@@ -112,3 +113,13 @@ def test_rpc_server_execute_mode_forwards_dual_ee_commands_and_state_reads():
     )
     assert bridge.calls[1] == ("get_full_state_serialized",)
     assert state == {"left_arm": {"end_pose": [0.0] * 6, "gripper": 0.0}}
+
+
+def test_robot_type_profile_mapping():
+    dual_profile = resolve_robot_profile("dual_r5")
+    lift_profile = resolve_robot_profile("lift")
+
+    assert dual_profile.arms_only is True
+    assert dual_profile.enable_lift is False
+    assert lift_profile.arms_only is False
+    assert lift_profile.enable_lift is True

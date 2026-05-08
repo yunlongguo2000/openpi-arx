@@ -6,6 +6,7 @@ import time
 import os
 import sys
 from pathlib import Path
+from typing import Any, Literal
 
 import numpy as np
 import yaml
@@ -70,6 +71,26 @@ class ArxUnifiedInference:
         self.robot_ip = robot_cfg["ip"]
         self.robot_port = int(robot_cfg.get("port", 4242))
         self.run_mode = robot_cfg.get("mode", "execute")
+        self.robot_type: Literal["dual_r5", "lift"] = robot_cfg.get("robot_type", "lift")
+        if self.robot_type not in ("dual_r5", "lift"):
+            raise ValueError(f"Unsupported robot.robot_type: {self.robot_type}")
+        self.control_space = robot_cfg.get("control_space", "joint")
+        if self.control_space not in ("joint", "ee"):
+            raise ValueError(f"Unsupported robot.control_space: {self.control_space}")
+
+        expected_control_space = "ee" if self.is_14d else "joint"
+        if self.control_space != expected_control_space:
+            raise ValueError(
+                f"Config mismatch: model={self.model_name} expects control_space={expected_control_space}, "
+                f"but got {self.control_space}."
+            )
+        if not self.is_14d and self.robot_type != "lift":
+            raise ValueError(
+                "32D joint+chassis pipeline currently requires robot_type=lift. "
+                "Use pi05_arx_delta_ee (14D) for dual_r5."
+            )
+        if self.is_14d and self.robot_type == "lift":
+            log.warning("Using 14D ee control on lift robot_type; chassis commands are not used in this mode.")
         
         # Control Params
         control_cfg = self.cfg["control"]
@@ -100,6 +121,12 @@ class ArxUnifiedInference:
             rpc_client=rpc_client,
             camera_rig=camera_rig,
             dry_run=(self.run_mode == "mock"),
+        )
+        log.info(
+            "Resolved robot profile: type=%s, control_space=%s, model=%s",
+            self.robot_type,
+            self.control_space,
+            self.model_name,
         )
 
     def _load_policy(self):

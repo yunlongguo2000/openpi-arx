@@ -5,9 +5,9 @@ inference_type: "remote"  # local / remote
 
 # Model configuration
 model:
-  name: "pi05_arx"        # pi05_arx (32D) / pi05_arx_delta_ee (14D)
-  checkpoint_dir: "~/models/pi05_arx_v1"  # Only for local inference
-  # norm_stats_dir: "~/models/pi05_arx_v1/assets/arx" # Optional override
+  name: "pi05_arx_delta_ee"        # pi05_arx (32D, lift) / pi05_arx_delta_ee (14D, dual_r5)
+  checkpoint_dir: "~/models/pi05_arx_delta_ee_v1"  # Only for local inference
+  # norm_stats_dir: "~/models/pi05_arx_delta_ee_v1/assets/arx" # Optional override
 
 # Remote Policy Server (only if inference_type is remote)
 policy_server:
@@ -16,10 +16,11 @@ policy_server:
 
 # Robot Hardware
 robot:
+  robot_type: "dual_r5"   # lift / dual_r5
   ip: "127.0.0.1"
   port: 4242
   mode: "execute"         # execute / mock (dry run)
-  control_space: "joint"  # joint (32D) / ee (14D) - MUST match model.name
+  control_space: "ee"     # joint (32D, currently lift-only) / ee (14D, dual_r5 recommended)
 
 # Image resolution
 image:

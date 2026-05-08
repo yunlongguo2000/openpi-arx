@@ -8,6 +8,8 @@ import signal
 import sys
 import threading
 import time
+from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 
@@ -23,6 +25,27 @@ log = logging.getLogger(__name__)
 NUM_ARM_JOINTS = 7
 NUM_POSE_DIMS = 6
 COMMAND_MODES = ("silent", "execute")
+RobotType = Literal["dual_r5", "lift"]
+
+
+@dataclass(frozen=True)
+class RobotProfile:
+    robot_type: RobotType
+    arms_only: bool
+    enable_lift: bool
+
+
+ROBOT_PROFILES: dict[RobotType, RobotProfile] = {
+    "dual_r5": RobotProfile(robot_type="dual_r5", arms_only=True, enable_lift=False),
+    "lift": RobotProfile(robot_type="lift", arms_only=False, enable_lift=True),
+}
+
+
+def resolve_robot_profile(robot_type: str) -> RobotProfile:
+    try:
+        return ROBOT_PROFILES[robot_type]  # type: ignore[index]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported robot_type: {robot_type}") from exc
 
 
 class _LatestOnlyCommandWorker:
@@ -83,7 +106,7 @@ class ArxROS2RPCServer:
 
     def __init__(
         self,
-        arms_only: bool = False,
+        profile: RobotProfile = ROBOT_PROFILES["dual_r5"],
         control_mode: str = "normal",
         command_mode: str = "silent",
         *,
@@ -92,7 +115,8 @@ class ArxROS2RPCServer:
         if command_mode not in COMMAND_MODES:
             raise ValueError(f"Unsupported command_mode: {command_mode}")
         self.bridge = None
-        self.arms_only = arms_only
+        self.profile = profile
+        self.arms_only = profile.arms_only
         self.control_mode = control_mode
         self.command_mode = command_mode
 
@@ -199,7 +223,7 @@ class ArxROS2RPCServer:
             if not rclpy.ok():
                 rclpy.init()
 
-            new_bridge = ARXLift2Bridge(enable_lift=not self.arms_only, control_mode=self.control_mode)
+            new_bridge = ARXLift2Bridge(enable_lift=self.profile.enable_lift, control_mode=self.control_mode)
             new_bridge.connect(timeout=timeout)
 
             old_bridge = None
@@ -501,14 +525,14 @@ class ArxROS2RPCServer:
 
 def _serve(
     bind_address: str = "tcp://0.0.0.0:4242",
-    arms_only: bool = False,
+    profile: RobotProfile = ROBOT_PROFILES["dual_r5"],
     control_mode: str = "normal",
     command_mode: str = "silent",
 ):
     if zerorpc is None:  # pragma: no cover - depends on deployment environment.
         raise RuntimeError("zerorpc is not installed. Install it on the robot-control machine before serving RPC.")
 
-    server_impl = ArxROS2RPCServer(arms_only=arms_only, control_mode=control_mode, command_mode=command_mode)
+    server_impl = ArxROS2RPCServer(profile=profile, control_mode=control_mode, command_mode=command_mode)
     rpc_server = zerorpc.Server(server_impl, heartbeat=60)
     rpc_server.bind(bind_address)
 
@@ -541,8 +565,14 @@ def _serve(
 
 def main():
     parser = argparse.ArgumentParser(description="ARX ROS2 RPC Server")
-    parser.add_argument("--arms-only", action="store_true", default=True, help="Only enable dual-arm control")
-    parser.add_argument("--with-lift", action="store_true", help="Also enable the LIFT chassis")
+    parser.add_argument(
+        "--robot-type",
+        choices=["dual_r5", "lift"],
+        default="dual_r5",
+        help="Robot type: dual_r5=dual R5 arms only, lift=dual R5 arms + LIFT chassis",
+    )
+    parser.add_argument("--arms-only", action="store_true", help="(legacy) equivalent to --robot-type dual_r5")
+    parser.add_argument("--with-lift", action="store_true", help="(legacy) equivalent to --robot-type lift")
     parser.add_argument(
         "--control-mode",
         default="normal",
@@ -558,8 +588,20 @@ def main():
     )
     args = parser.parse_args()
 
-    arms_only = not args.with_lift
-    _serve(bind_address=args.bind, arms_only=arms_only, control_mode=args.control_mode, command_mode=args.command_mode)
+    if args.with_lift:
+        profile = ROBOT_PROFILES["lift"]
+    elif args.arms_only:
+        profile = ROBOT_PROFILES["dual_r5"]
+    else:
+        profile = resolve_robot_profile(args.robot_type)
+
+    log.info(
+        "Resolved robot profile: type=%s -> arms_only=%s, enable_lift=%s",
+        profile.robot_type,
+        profile.arms_only,
+        profile.enable_lift,
+    )
+    _serve(bind_address=args.bind, profile=profile, control_mode=args.control_mode, command_mode=args.command_mode)
 
 
 if __name__ == "__main__":
