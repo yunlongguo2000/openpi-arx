@@ -1,0 +1,42 @@
+# ARX Pi0.5 Unified Inference Config
+
+# Run mode: local (direct model load) or remote (connect to serve_policy.py)
+inference_type: "remote"  # local / remote
+
+# Model configuration
+model:
+  name: "pi05_arx_delta_ee"        # pi05_arx (32D, lift) / pi05_arx_delta_ee (14D, dual_r5)
+  checkpoint_dir: "~/models/pi05_arx_delta_ee_v1"  # Only for local inference
+  # norm_stats_dir: "~/models/pi05_arx_delta_ee_v1/assets/arx" # Optional override
+
+# Remote Policy Server (only if inference_type is remote)
+policy_server:
+  host: "192.168.110.26"
+  port: 8000
+
+# Robot Hardware
+robot:
+  robot_type: "dual_r5"   # lift / dual_r5
+  ip: "127.0.0.1"
+  port: 4242
+  mode: "execute"         # execute / mock (dry run)
+  control_space: "ee"     # joint (32D, currently lift-only) / ee (14D, dual_r5 recommended)
+
+# Image resolution
+image:
+  width: 424
+  height: 240
+
+# Control loop
+control:
+  action_horizon: 16
+  action_fps: 15          # Hz
+  max_steps: 0            # 0 for infinite
+
+# Head camera extrinsic calibration
+calibration:
+  enabled: false                    # set true to enable board detection
+  params_path: ""                   # auto-detect (algorithms/calibration/calibration_params.yaml)
+
+# Task
+task_description: "pick up the object"

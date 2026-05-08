@@ -578,8 +578,8 @@ class LeRobotArxDataConfig(DataConfigFactory):
 
         # Data transforms: ARX-specific I/O conversion
         data_transforms = _transforms.Group(
-            inputs=[arx_policy.ArxInputs()],
-            outputs=[arx_policy.ArxOutputs()],
+            inputs=[arx_policy.ArxFullInputs()],
+            outputs=[arx_policy.ArxFullOutputs()],
         )
 
         # Delta actions: joints(14) + tcp(12) = delta, grippers(2) + chassis(4) = absolute
@@ -601,6 +601,70 @@ class LeRobotArxDataConfig(DataConfigFactory):
         model_transforms = ModelTransformFactory(
             default_prompt=self.default_prompt
         )(model_config)
+
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotArxDeltaEEDataConfig(DataConfigFactory):
+    """Data config for ARX R5 dual-arm delta-EE datasets in LeRobot format."""
+
+    extra_delta_transform: bool = False
+    action_dim: int = arx_policy.ARX_ACTION_DIM
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    state_source_key: str = "observation.state"
+    base_image_source_key: str = "observation.images.head_image"
+    left_wrist_image_source_key: str = "observation.images.left_wrist_image"
+    right_wrist_image_source_key: str = "observation.images.right_wrist_image"
+    actions_source_key: str = "action"
+    prompt_source_key: str = "task"
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        repack_transform = _transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "observation/image": self.base_image_source_key,
+                        "observation/wrist_image": self.left_wrist_image_source_key,
+                        "observation/right_wrist_image": self.right_wrist_image_source_key,
+                        "observation/state": self.state_source_key,
+                        "actions": self.actions_source_key,
+                        "prompt": self.prompt_source_key,
+                    }
+                )
+            ]
+        )
+
+        data_transforms = _transforms.Group(
+            inputs=[
+                arx_policy.ArxDeltaEEInputs(
+                    model_type=model_config.model_type,
+                    state_key="observation/state",
+                    base_image_key="observation/image",
+                    left_wrist_image_key="observation/wrist_image",
+                    right_wrist_image_key="observation/right_wrist_image",
+                    prompt_key="prompt",
+                )
+            ],
+            outputs=[arx_policy.ArxDeltaEEOutputs(action_dim=self.action_dim)],
+        )
+
+        if self.extra_delta_transform:
+            delta_action_mask = _transforms.make_bool_mask(self.action_dim - 2, -2)
+            data_transforms = data_transforms.push(
+                inputs=[_transforms.DeltaActions(delta_action_mask)],
+                outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+            )
+
+        model_transforms = ModelTransformFactory()(model_config)
 
         return dataclasses.replace(
             self.create_base_config(assets_dirs, model_config),
@@ -1191,6 +1255,23 @@ _CONFIGS = [
             action_expert_variant="gemma_300m_lora",
         ).get_freeze_filter(),
         ema_decay=None,
+        num_train_steps=30_000,
+        batch_size=32,
+    ),
+    TrainConfig(
+        name="pi05_arx_delta_ee",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=14,
+            action_horizon=16,
+        ),
+        data=LeRobotArxDeltaEEDataConfig(
+            repo_id="deepcybo/arx_r5_delta_ee_v1",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "gs://openpi-assets/checkpoints/pi05_base/params",
+        ),
         num_train_steps=30_000,
         batch_size=32,
     ),
