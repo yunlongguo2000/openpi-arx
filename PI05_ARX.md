@@ -128,6 +128,25 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_arx_lora \
     --exp-name=arx_task_lora_v01 --overwrite
 ```
 
+### Option C — ARX R5 Full Joint finetune (`pi05_arx_r5_bottle_handoff`)
+
+For pure dual-arm datasets without mobile base. Uses $\pi_{0.5}$ base with full weight updates on 28D actions.
+
+**1. Compute normalization statistics:**
+
+```bash
+uv run scripts/compute_norm_stats.py --config-name pi05_arx_r5_bottle_handoff
+```
+
+**2. Start training:**
+
+```bash
+XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_arx_r5_bottle_handoff \
+    --exp-name=arx_r5_bottle_handoff_v01 --overwrite
+```
+
+> **Note on R5 Adaptation (May 2026)**: The ARX R5 adaptation has been verified and fixed. See [ADAPTATION_FIXES_SUMMARY.md](ADAPTATION_FIXES_SUMMARY.md) for details on critical fixes to dimension handling, gripper indices, and method signatures.
+
 ### Configuration Notes
 
 Edit `TrainConfig` in [`config.py`](src/openpi/training/config.py) to set:
@@ -202,8 +221,10 @@ The inference loop will:
 | Issue | Resolution |
 |-------|-----------|
 | `norm_stats` missing on robot machine | Copy `norm_stats.json` from GPU machine after running `compute_norm_stats.py` |
-| Robot RPC connection failed | Ensure `arx_ros2_rpc_server.py` is running on robot and IP/port match `cfg_arx_pi.yaml` |
-| Action dimension mismatch | `ArxOutputs.action_dim` must be 32; verify dataset `info.json` matches |
+| Robot RPC connection failed | Ensure `arx_ros2_rpc_server.py` is running on robot and IP/port match config file |
+| Action dimension mismatch (LIFT2) | `ArxOutputs.action_dim` must be 32; verify dataset `info.json` matches |
+| Action dimension mismatch (R5) | For R5, model outputs 32D (padded); adapter transforms to 40D (indices 38,39 for grippers). See [ADAPTATION_FIXES_SUMMARY.md](ADAPTATION_FIXES_SUMMARY.md) |
 | Training OOM | Use `pi05_arx_lora` config, or set `--fsdp-devices <n>` for multi-GPU |
 | Images all black during inference | Expected until RealSense integration is complete; `image_mask=False` tells model to ignore them |
 | `ArxROS2RPCClient` import error | Check `_ARX_BRIDGE_PATH` in `inference_arx.py` points to `arx_vr_data_collection/` |
+| R5 inference crashes with IndexError | Ensure code is up-to-date (commit 5492c76+). Old code has dimension mismatch bug. See [ADAPTATION_FIXES_SUMMARY.md](ADAPTATION_FIXES_SUMMARY.md) |

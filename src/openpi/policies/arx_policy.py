@@ -116,20 +116,34 @@ ARX_R5_ACTION_INDICES = (*range(26), 38, 39)
 ARX_R5_STATE_INDICES = (*range(54), 66, 67)
 
 @dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class ArxR5FullInputs(transforms.DataTransformFn):
     """Convert ARX R5 observations to 56D model input format.
     
     Handles both training (68D state from dataset) and inference (56D state from robot adapter).
+    
+    IMPORTANT: This class handles a dimension divergence:
+    - Training: Dataset provides 68D states (joint_pvc, tcp, delta_tcp, grippers)
+    - Inference: Robot RPC provides 56D states (joint_pvc, tcp, grippers only)
+    
+    The shape detection ensures both paths work correctly:
+    - 68D input (training): Extract to 56D via ARX_R5_STATE_INDICES
+    - 56D input (inference): Use directly (already core dimensions)
+    
+    See ADAPTATION_FIXES_SUMMARY.md for detailed dimension mapping.
     """
 
     def __call__(self, data: dict) -> dict:
         # 1. Process State (68D training -> 56D, or 56D inference -> 56D)
         raw_state = np.asarray(data["state"], dtype=np.float32)
         
-        # If state is 68D (training), extract to 56D; if already 56D (inference), use as-is
+        # Shape detection to handle both training (68D) and inference (56D) paths
+        # This was a critical fix to prevent IndexError during inference
         if raw_state.shape[-1] == 68:
+            # Training path: extract specified indices to get 56D core state
             state = np.take(raw_state, ARX_R5_STATE_INDICES, axis=-1)
         elif raw_state.shape[-1] == 56:
+            # Inference path: state is already 56D (robot RPC has no velocity/current data)
             state = raw_state
         else:
             raise ValueError(

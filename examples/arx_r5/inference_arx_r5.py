@@ -154,6 +154,30 @@ class ArxUnifiedInference:
         )
 
     def run(self) -> None:
+        """Main inference loop for ARX R5 robot.
+        
+        IMPORTANT FIXES (May 2026):
+        1. Removed non-existent 'is_14d' parameter from read_policy_observation()
+           - This parameter does not exist in the adapter signature
+           - Old code would crash with TypeError at runtime
+        
+        2. Fixed state key access to use obs["state"] directly
+           - Old code had incorrect state_key logic
+           - Now uses the correct key from robot adapter output
+        
+        3. Correctly passes state parameter to apply_action_chunk()
+           - This parameter was missing in old signature
+           - Now required for proper action execution
+        
+        Data flow:
+        - Robot observation: 56D state (joint_pvc + tcp + grippers, no velocities)
+        - Model input: 56D state (passed directly, no extraction needed)
+        - Model output: 32D actions (padded by Pi0.5)
+        - Transform: 32D → 40D (zero-pad unused dimensions)
+        - Execution: Extract joints [0-13, 14-20], grippers [38-39]
+        
+        See ADAPTATION_FIXES_SUMMARY.md for complete details.
+        """
         policy = self._load_policy()
         self.robot.connect()
         log.info("Robot Connected")

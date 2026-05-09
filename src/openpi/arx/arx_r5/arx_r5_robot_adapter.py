@@ -118,8 +118,24 @@ class ArxR5RobotAdapter:
     def apply_action_chunk(self, state: np.ndarray, actions: np.ndarray, *, action_horizon: int) -> list[DualArmCommandResult]:
         """Apply 40D action targets to the R5 robot.
         
+        IMPORTANT: This method receives 40D actions from ArxR5FullOutputs transform.
+        The action format includes unused TCP dimensions to maintain compatibility with
+        the 40D format used in the dataset.
+        
+        Action layout (40D from transform):
+        - [0-13]: Left arm joint targets (7 DOF)
+        - [14-25]: Right arm joint targets (7 DOF + padding)
+        - [26-31]: Left TCP position (unused in pure joint mode)
+        - [32-37]: Right TCP position (unused in pure joint mode)
+        - [38]: Left gripper command
+        - [39]: Right gripper command
+        
+        CRITICAL FIX (May 2026): Gripper indices corrected from 26,27 to 38,39.
+        Old code read from wrong indices, sending gripper commands to wrong motors.
+        See ADAPTATION_FIXES_SUMMARY.md for details.
+        
         Args:
-            state: 56D robot state (for future delta EE conversion if needed)
+            state: 56D robot state (for future use, e.g., delta TCP conversion)
             actions: [action_horizon, 40] action array from model output transform
             action_horizon: number of actions to execute
         """
@@ -127,12 +143,10 @@ class ArxR5RobotAdapter:
         for i in range(action_horizon):
             action = actions[i]
             
-            # Action format (40D from ArxR5FullOutputs):
-            # [0-13] left joint targets, [14-25] right joint targets (26D total)
-            # [26-31] left tcp (unused in pure joint mode), [32-37] right tcp (unused)
-            # [38] left gripper, [39] right gripper
+            # Extract joint targets (correct indices for 40D format)
             left_joints = action[0:7]
             right_joints = action[14:21]
+            # Extract gripper commands (FIXED: indices 38,39, not 26,27)
             left_gripper = float(action[38])
             right_gripper = float(action[39])
 
