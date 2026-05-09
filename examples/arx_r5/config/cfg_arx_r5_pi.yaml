@@ -1,13 +1,14 @@
-# ARX Pi0.5 Unified Inference Config
+# ARX R5 Pi0.5 Full Joint Inference Config
+# For the pi05_arx_r5_bottle_handoff fine-tuned model
 
 # Run mode: local (direct model load) or remote (connect to serve_policy.py)
 inference_type: "remote"  # local / remote
 
 # Model configuration
 model:
-  name: "pi05_arx_delta_ee"        # pi05_arx (32D, lift) / pi05_arx_delta_ee (14D, dual_r5)
-  checkpoint_dir: "~/models/pi05_arx_delta_ee_v1"  # Only for local inference
-  # norm_stats_dir: "~/models/pi05_arx_delta_ee_v1/assets/arx" # Optional override
+  name: "pi05_arx_r5_bottle_handoff"  # ARX R5 full joint fine-tuned model (28D/56D)
+  checkpoint_dir: "~/models/pi05_arx_r5_bottle_handoff"  # Only for local inference
+  # norm_stats_dir: "~/models/pi05_arx_r5_bottle_handoff/assets/arx_r5_bottle_handoff" # Optional override
 
 # Remote Policy Server (only if inference_type is remote)
 policy_server:
@@ -16,11 +17,11 @@ policy_server:
 
 # Robot Hardware
 robot:
-  robot_type: "dual_r5"   # lift / dual_r5
+  robot_type: "dual_r5"   # ARX R5 is pure dual-arm (no chassis)
   ip: "127.0.0.1"
   port: 4242
   mode: "execute"         # execute / mock (dry run)
-  control_space: "ee"     # joint (32D, currently lift-only) / ee (14D, dual_r5 recommended)
+  control_space: "joint"  # Full joint control (40D -> 28D core)
 
 # Image resolution
 image:

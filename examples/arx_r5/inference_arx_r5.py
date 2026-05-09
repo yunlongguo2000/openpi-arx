@@ -19,7 +19,7 @@ _ARX_BRIDGE_PATH = os.path.abspath(os.path.join(
 if _ARX_BRIDGE_PATH not in sys.path:
     sys.path.insert(0, _ARX_BRIDGE_PATH)
 
-from openpi.arx.arx_robot_adapter import ArxRobotAdapter, DummyCameraRig, RealSenseCameraRig
+from openpi.arx.arx_r5.arx_r5_robot_adapter import ArxR5RobotAdapter as ArxRobotAdapter, DummyCameraRig, RealSenseCameraRig
 from openpi.arx.arx_ros2_rpc_client import ArxROS2RPCClient
 from openpi.policies import policy_config as _policy_config
 from openpi.shared import normalize as _normalize
@@ -163,23 +163,20 @@ class ArxUnifiedInference:
             while True:
                 started = time.perf_counter()
                 
-                # 1. Read Obs
+                # 1. Read Obs (returns 56D state for R5 full joint mode)
                 obs = self.robot.read_policy_observation(
                     image_height=self.image_height,
                     image_width=self.image_width,
                     prompt=self.task_description,
-                    is_14d=self.is_14d
                 )
                 
                 # 2. Infer
                 result = policy.infer(obs)
                 actions = np.asarray(result["actions"], dtype=np.float32)
                 
-                # 3. Apply Actions
-                # For 59D/32D mode, we might need a different state input if ArxFullInputs expects it
-                state_key = "observation/state" if self.is_14d else "state"
+                # 3. Apply Actions (40D from model output transform)
                 self.robot.apply_action_chunk(
-                    obs[state_key],
+                    obs["state"],
                     actions,
                     action_horizon=self.action_horizon,
                 )
@@ -200,7 +197,7 @@ class ArxUnifiedInference:
 
 def main():
     parser = argparse.ArgumentParser(description="Unified ARX Inference (Local/Remote, 14D/32D)")
-    parser.add_argument("--config", type=Path, default=Path(__file__).parent / "config" / "cfg_arx_pi_unified.yaml")
+    parser.add_argument("--config", type=Path, default=Path(__file__).parent / "config" / "cfg_arx_r5_pi.yaml")
     args = parser.parse_args()
     
     ArxUnifiedInference(args.config).run()

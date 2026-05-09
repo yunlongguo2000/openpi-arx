@@ -4,44 +4,33 @@ This document describes how to finetune and deploy $\pi_{0.5}$ on the **ARX LIFT
 
 ---
 
-## Robot Overview
+## Robot Overview: Two Distinct Protocols
+
+The openpi-arx repository supports two primary hardware configurations for the ARX family. While both can be finetuned using the same $\pi_{0.5}$ base model, their physical differences require distinct observation and action protocols.
+
+### 1. ARX LIFT 2 (Mobile Base + Dual Arms)
+This is the default, feature-complete configuration that includes chassis and lift control.
 
 | Item | Spec |
 |------|------|
 | Platform | ARX LIFT2 mobile base + dual ARX R5/X5 arms |
-| State dim | **59D** |
-| Action dim | **32D** |
-| Cameras | Left wrist (424×240) + Right wrist (424×240) |
-| Control freq | 15 Hz |
-| Action horizon | 16 steps |
+| State dim | **59D** (Joints PVC, TCP, Grippers, Chassis) |
+| Action dim | **32D** (Joints, TCP, Grippers, Chassis) |
+| TrainConfig | `pi05_arx` / `LeRobotArxLift2FullDataConfig` |
 
-### State Vector (59D)
+### 2. ARX R5 (Pure Dual-Arm)
+This configuration is specifically optimized for datasets collected on pure dual-arm setups without a mobile base. It explicitly removes chassis-related dimensions to provide a clean, noise-free learning environment for the arms.
 
-| Index | Field | Source |
-|-------|-------|--------|
-| `[0:7]` | `left_joint_pos` | left arm joint positions |
-| `[7:14]` | `left_joint_vel` | left arm joint velocities |
-| `[14:21]` | `left_joint_cur` | left arm joint currents |
-| `[21:28]` | `right_joint_pos` | right arm joint positions |
-| `[28:35]` | `right_joint_vel` | right arm joint velocities |
-| `[35:42]` | `right_joint_cur` | right arm joint currents |
-| `[42:48]` | `left_tcp_pose` | left end-effector pose (x,y,z,roll,pitch,yaw) |
-| `[48:54]` | `right_tcp_pose` | right end-effector pose |
-| `[54]` | `left_gripper` | left gripper position |
-| `[55]` | `right_gripper` | right gripper position |
-| `[56:59]` | `chassis` | height, head_yaw, head_pitch |
+| Item | Spec |
+|------|------|
+| Platform | ARX R5 pure dual-arm setup (desktop) |
+| State dim | **56D** (42D Joint PVC + 12D TCP Pose + 2D Grippers) |
+| Action dim | **28D** (14D Joint Targets + 12D TCP Targets + 2D Gripper Commands) |
+| TrainConfig | `pi05_arx_r5_bottle_handoff` / `LeRobotArxR5FullDataConfig` |
 
-### Action Vector (32D)
-
-| Index | Field | Notes |
-|-------|-------|-------|
-| `[0:7]` | `left_joint_pos` | delta joint commands |
-| `[7:14]` | `right_joint_pos` | delta joint commands |
-| `[14:20]` | `left_tcp_pose` | delta TCP pose (not used in joint-control mode) |
-| `[20:26]` | `right_tcp_pose` | delta TCP pose (not used in joint-control mode) |
-| `[26]` | `left_gripper` | absolute gripper position |
-| `[27]` | `right_gripper` | absolute gripper position |
-| `[28:32]` | `chassis (vx, vy, wz, h)` | absolute chassis velocities + height |
+**How $\pi_{0.5}$ handles the R5 (28D/56D) dimensions:**
+- **State (56D):** In $\pi_{0.5}$, continuous state inputs are tokenized into discrete language tokens (e.g., `State: 142 201 56...;`). The LLM naturally accepts variable-length text, so the 56D state is passed natively without any zero-padding.
+- **Action (28D):** The pre-trained flow-matching expert has a fixed 32D output projection (inherited from the LIFT 2 pre-training). During training, the openpi data loader automatically pads the 28D action targets to 32D using the internal `PadStatesAndActions` transform. During inference, we slice the 32D prediction back to 28D for the robot.
 
 ---
 
@@ -87,25 +76,25 @@ Make sure `lerobot_data_collection/arx_vr_data_collection/` is present alongside
 | File | Role |
 |------|------|
 | [`src/openpi/policies/arx_policy.py`](src/openpi/policies/arx_policy.py) | `ArxInputs` / `ArxOutputs` — observation/action transform |
-| [`src/openpi/training/config.py`](src/openpi/training/config.py) | `LeRobotArxDataConfig`, `pi05_arx`, `pi05_arx_lora` TrainConfigs |
+| [`src/openpi/training/config.py`](src/openpi/training/config.py) | `LeRobotArxLift2FullDataConfig`, `pi05_arx`, `pi05_arx_lora` TrainConfigs |
 | [`examples/arx/inference_arx.py`](examples/arx/inference_arx.py) | Inference main loop (robot-side) |
 | [`examples/arx/config/cfg_arx_pi.yaml`](examples/arx/config/cfg_arx_pi.yaml) | Deployment config (server address, robot IP, control params) |
 
 ---
 
-## Data Config (`LeRobotArxDataConfig`)
+## Data Configs (`LeRobotArxLift2FullDataConfig` & `LeRobotArxR5FullDataConfig`)
 
-Defined in [`config.py`](src/openpi/training/config.py). It handles:
+Defined in [`config.py`](src/openpi/training/config.py), these classes handle adapting datasets to the required model formats.
 
-- **Repack transform**: maps LeRobot dataset keys to inference environment keys:
-  ```
-  observation.state              → state
-  observation.images.left_wrist_image  → images.left_wrist
-  observation.images.right_wrist_image → images.right_wrist
-  action                         → actions
-  task                           → prompt
-  ```
+### For ARX LIFT 2 (`LeRobotArxLift2FullDataConfig`)
+- **Repack transform**: maps LeRobot dataset keys to inference environment keys.
+- **Data transform**: uses `ArxLift2FullInputs` (pads to 59D state) and `ArxLift2FullOutputs` (returns 32D action).
 - **Delta action transform** (`use_delta_joint_actions=True`): applies delta conversion to joints (14D) and TCP (12D); grippers and chassis remain absolute.
+
+### For ARX R5 (`LeRobotArxR5FullDataConfig`)
+- **Repack transform**: maps LeRobot dataset keys to inference environment keys.
+- **Data transform**: uses `ArxR5FullInputs` (extracts pure 56D state) and `ArxR5FullOutputs` (maps 32D prediction back to 28D action).
+- **Delta action transform**: Not used by default (actions are typically absolute joints/TCP targets).
 
 ---
 

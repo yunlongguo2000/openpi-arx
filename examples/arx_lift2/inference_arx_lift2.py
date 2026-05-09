@@ -54,6 +54,7 @@ _ARX_ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "..")
 if _ARX_ROOT not in sys.path:
     sys.path.insert(0, _ARX_ROOT)
 
+from openpi.arx.arx_lift2.arx_lift2_robot_adapter import ArxLift2RobotAdapter as ArxRobotAdapter
 from openpi_client import websocket_client_policy
 from ros2_bridge.arx_ros2_rpc_client import ArxROS2RPCClient
 
@@ -241,7 +242,7 @@ class ArxInference:
 
 def main():
     parser = argparse.ArgumentParser(description="ARX Pi0.5 Inference")
-    parser.add_argument("--config", type=str, default="inference/cfg_arx_pi.yaml",
+    parser.add_argument("--config", type=str, default="examples/arx_lift2/config/cfg_arx_lift2_pi.yaml",
                         help="Path to deployment config YAML")
     args = parser.parse_args()
 

@@ -14,7 +14,7 @@
 #   ./scripts/deploy.sh --checkpoint <path> --hardware
 #
 #   # 使用 LoRA 配置
-#   ./scripts/deploy.sh --config pi05_arx_lora --checkpoint <path>
+#   ./scripts/deploy.sh --config pi05_arx_r5_bottle_handoff_lora --checkpoint <path>
 
 set -e
 
@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPENPI_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # 默认参数
-CONFIG_NAME="pi05_arx"
+CONFIG_NAME="pi05_arx" # Set to pi05_arx_r5_bottle_handoff for R5
 CHECKPOINT_DIR=""
 LAUNCH_HARDWARE=false
 SERVER_PORT=8000
@@ -47,7 +47,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -h|--help)
-            echo "Usage: $0 --checkpoint <path> [--config pi05_arx] [--hardware] [--port 8000]"
+            echo "Usage: $0 --checkpoint <path> [--config pi05_arx_r5_bottle_handoff] [--hardware] [--port 8000]"
             echo ""
             echo "Options:"
             echo "  --checkpoint PATH  Trained model checkpoint directory (required)"

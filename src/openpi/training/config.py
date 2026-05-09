@@ -539,7 +539,7 @@ class LeRobotFrankaDataConfig(DataConfigFactory):
 
 
 @dataclasses.dataclass(frozen=True)
-class LeRobotArxDataConfig(DataConfigFactory):
+class LeRobotArxLift2FullDataConfig(DataConfigFactory):
     """Data config for ARX LIFT2 dual-arm mobile robot in LeRobot format.
 
     Action (32D): left_joint(7) + right_joint(7) + left_tcp(6) + right_tcp(6)
@@ -578,8 +578,8 @@ class LeRobotArxDataConfig(DataConfigFactory):
 
         # Data transforms: ARX-specific I/O conversion
         data_transforms = _transforms.Group(
-            inputs=[arx_policy.ArxFullInputs()],
-            outputs=[arx_policy.ArxFullOutputs()],
+            inputs=[arx_policy.ArxLift2FullInputs()],
+            outputs=[arx_policy.ArxLift2FullOutputs()],
         )
 
         # Delta actions: joints(14) + tcp(12) = delta, grippers(2) + chassis(4) = absolute
@@ -597,6 +597,54 @@ class LeRobotArxDataConfig(DataConfigFactory):
                 inputs=[_transforms.DeltaActions(delta_action_mask)],
                 outputs=[_transforms.AbsoluteActions(delta_action_mask)],
             )
+
+        model_transforms = ModelTransformFactory(
+            default_prompt=self.default_prompt
+        )(model_config)
+
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+            action_sequence_keys=self.action_sequence_keys,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotArxR5FullDataConfig(DataConfigFactory):
+    """Data config for ARX R5 dual-arm full joint dataset (40D action, 68D state)."""
+
+    # Default language prompt
+    default_prompt: str | None = None
+    # Action sequence keys
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        # Repack: map LeRobot dataset keys → inference environment keys
+        repack_transform = _transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "state": "observation.state",
+                        "images": {
+                            "head": "observation.images.head_image",
+                            "left_wrist": "observation.images.left_wrist_image",
+                            "right_wrist": "observation.images.right_wrist_image",
+                        },
+                        "actions": "action",
+                        "prompt": "task",
+                    }
+                )
+            ]
+        )
+
+        # Data transforms: Use the new ArxR5Full transforms
+        data_transforms = _transforms.Group(
+            inputs=[arx_policy.ArxR5FullInputs()],
+            outputs=[arx_policy.ArxR5FullOutputs()],
+        )
 
         model_transforms = ModelTransformFactory(
             default_prompt=self.default_prompt
@@ -1223,7 +1271,7 @@ _CONFIGS = [
             action_dim=32,
             action_horizon=16,
         ),
-        data=LeRobotArxDataConfig(
+        data=LeRobotArxLift2FullDataConfig(
             repo_id="deepcybo/arx_lift_task_20260319_v31",
             base_config=DataConfig(prompt_from_task=True),
         ),
@@ -1242,7 +1290,7 @@ _CONFIGS = [
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
         ),
-        data=LeRobotArxDataConfig(
+        data=LeRobotArxLift2FullDataConfig(
             repo_id="deepcybo/arx_lift_task_20260319_v31",
             base_config=DataConfig(prompt_from_task=True),
         ),
@@ -1273,6 +1321,23 @@ _CONFIGS = [
             "gs://openpi-assets/checkpoints/pi05_base/params",
         ),
         num_train_steps=30_000,
+        batch_size=32,
+    ),
+    TrainConfig(
+        name="pi05_arx_r5_bottle_handoff",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            action_dim=32,
+            action_horizon=16,
+        ),
+        data=LeRobotArxR5FullDataConfig(
+            repo_id="/vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff",
+            base_config=DataConfig(prompt_from_task=True),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "/vepfs-mlp2/c20250510/250404002/pi05_models/pi05_models/pi05_base/params",
+        ),
+        num_train_steps=20_000,
         batch_size=32,
     ),
 ]
