@@ -41,7 +41,7 @@ def state_59d_from_full_state(full_state: dict) -> np.ndarray:
          ch["head_pitch"]],            # [58]    chassis head pitch
     ]).astype(np.float32)
 
-def make_arx_lift_observation(
+def make_arx_lift2_observation(
     state: np.ndarray,
     images: Mapping[str, np.ndarray],
     prompt: str,
@@ -61,7 +61,7 @@ def make_arx_lift_observation(
     }
     return obs
 
-class ArxLiftRobotAdapter:
+class ArxLift2RobotAdapter:
     """Specialized ARX LIFT2 inference adapter: dual-arm + chassis, 32D actions, 59D state."""
 
     def __init__(
@@ -101,7 +101,7 @@ class ArxLiftRobotAdapter:
         full_state = self.get_full_state()
         images = self._camera_rig.read()
         state = state_59d_from_full_state(full_state)
-        return make_arx_lift_observation(state, images, prompt, height=image_height, width=image_width)
+        return make_arx_lift2_observation(state, images, prompt, height=image_height, width=image_width)
 
     def apply_action_chunk(self, actions: np.ndarray, *, action_horizon: int) -> list[DualArmCommandResult]:
         """Apply 32D action targets to the LIFT2 robot (including chassis/lift)."""

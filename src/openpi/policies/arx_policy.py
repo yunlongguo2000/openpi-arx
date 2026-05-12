@@ -15,7 +15,7 @@ from openpi import transforms
 from openpi.models import model as _model
 
 # === 1. Full Joint & Chassis Mode (32D Action, 59D State) ===
-def make_arx_lift_full_example() -> dict:
+def make_arx_lift2_full_example() -> dict:
     """Creates a random input example for the ARX policy (for warmup)."""
     return {
         "state": np.ones((59,), dtype=np.float32),
@@ -39,7 +39,7 @@ def _parse_image(img) -> np.ndarray:
     return img
 
 @dataclasses.dataclass(frozen=True)
-class ArxLiftFullJointInputs(transforms.DataTransformFn):
+class ArxLift2FullJointInputs(transforms.DataTransformFn):
     """Convert ARX full joint + chassis observations to openpi model input format."""
 
     EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("head", "left_wrist", "right_wrist")
@@ -93,7 +93,7 @@ class ArxLiftFullJointInputs(transforms.DataTransformFn):
         return inputs
 
 @dataclasses.dataclass(frozen=True)
-class ArxLiftFullJointOutputs(transforms.DataTransformFn):
+class ArxLift2FullJointOutputs(transforms.DataTransformFn):
     """Convert model output actions to ARX 32D full joint + chassis action format."""
 
     action_dim: int = 32

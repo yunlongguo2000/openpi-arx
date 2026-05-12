@@ -539,7 +539,7 @@ class LeRobotFrankaDataConfig(DataConfigFactory):
 
 
 @dataclasses.dataclass(frozen=True)
-class LeRobotArxLiftFullDataConfig(DataConfigFactory):
+class LeRobotArxLift2FullDataConfig(DataConfigFactory):
     """Data config for ARX LIFT2 dual-arm mobile robot in LeRobot format.
 
     Action (32D): left_joint(7) + right_joint(7) + left_tcp(6) + right_tcp(6)
@@ -578,8 +578,8 @@ class LeRobotArxLiftFullDataConfig(DataConfigFactory):
 
         # Data transforms: ARX-specific I/O conversion
         data_transforms = _transforms.Group(
-            inputs=[arx_policy.ArxLiftFullJointInputs()],
-            outputs=[arx_policy.ArxLiftFullJointOutputs()],
+            inputs=[arx_policy.ArxLift2FullJointInputs()],
+            outputs=[arx_policy.ArxLift2FullJointOutputs()],
         )
 
         # Delta actions: joints(14) + tcp(12) = delta, grippers(2) + chassis(4) = absolute
@@ -1271,7 +1271,7 @@ _CONFIGS = [
             action_dim=32,
             action_horizon=16,
         ),
-        data=LeRobotArxLiftFullDataConfig(
+        data=LeRobotArxLift2FullDataConfig(
             repo_id="deepcybo/arx_lift_task_20260319_v31",
             base_config=DataConfig(prompt_from_task=True),
         ),
@@ -1290,7 +1290,7 @@ _CONFIGS = [
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
         ),
-        data=LeRobotArxLiftFullDataConfig(
+        data=LeRobotArxLift2FullDataConfig(
             repo_id="deepcybo/arx_lift_task_20260319_v31",
             base_config=DataConfig(prompt_from_task=True),
         ),
