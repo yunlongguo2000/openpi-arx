@@ -14,7 +14,7 @@ import zerorpc
 
 log = logging.getLogger(__name__)
 
-class ArxLift2ROS2RPCServer:
+class ArxLiftROS2RPCServer:
     """RPC server for ARX LIFT 2 (Dual Arms + Mobile Base + Lift)."""
 
     def __init__(self, ip="0.0.0.0", port=4242):
@@ -81,7 +81,7 @@ def main():
     parser.add_argument("--port", type=int, default=4242, help="Port to listen on")
     args = parser.parse_args()
 
-    server = zerorpc.Server(ArxLift2ROS2RPCServer(port=args.port))
+    server = zerorpc.Server(ArxLiftROS2RPCServer(port=args.port))
     server.bind(f"tcp://0.0.0.0:{args.port}")
     log.info(f"ARX LIFT 2 ROS2 RPC Server listening on port {args.port}")
     

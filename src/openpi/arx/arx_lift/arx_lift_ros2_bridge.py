@@ -543,7 +543,7 @@ class R5DualArmBridge(Node):
         self.right_robotcmd_pub.publish(right_msg)
 
 
-class ARXLift2Bridge:
+class ARXLiftBridge:
     def __init__(
         self,
         lift_node_name: str = "arx_lift_bridge",

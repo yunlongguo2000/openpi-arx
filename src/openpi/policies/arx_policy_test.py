@@ -61,7 +61,7 @@ def test_arx_delta_ee_outputs_slice_to_14d():
 # === Full Joint + Chassis Mode (59D state / 32D action) ===
 
 def test_arx_full_inputs_maps_59d_state_and_images():
-    transform = arx_policy.ArxLift2FullJointInputs()
+    transform = arx_policy.ArxLiftFullJointInputs()
     data = {
         "state": np.arange(59, dtype=np.float32),
         "images": {
@@ -90,7 +90,7 @@ def test_arx_full_inputs_maps_59d_state_and_images():
 
 
 def test_arx_full_inputs_masks_missing_images():
-    transform = arx_policy.ArxLift2FullJointInputs()
+    transform = arx_policy.ArxLiftFullJointInputs()
     data = {
         "state": np.zeros(59, dtype=np.float32),
         "images": {
@@ -111,7 +111,7 @@ def test_arx_full_inputs_masks_missing_images():
 
 
 def test_arx_full_outputs_slice_to_32d():
-    transform = arx_policy.ArxLift2FullJointOutputs(action_dim=32)
+    transform = arx_policy.ArxLiftFullJointOutputs(action_dim=32)
     outputs = transform({"actions": np.ones((6, 64), dtype=np.float32)})
 
     assert outputs["actions"].shape == (6, 32)
