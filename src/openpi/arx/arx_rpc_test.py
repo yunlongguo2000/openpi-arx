@@ -117,7 +117,7 @@ def test_rpc_server_execute_mode_forwards_dual_ee_commands_and_state_reads():
 
 def test_robot_type_profile_mapping():
     dual_profile = resolve_robot_profile("arx_r5")
-    lift_profile = resolve_robot_profile("arx_lift")
+    lift_profile = resolve_robot_profile("arx_lift2")
 
     assert dual_profile.arms_only is True
     assert dual_profile.enable_lift is False
