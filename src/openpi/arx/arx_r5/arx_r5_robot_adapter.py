@@ -118,7 +118,7 @@ class ArxR5RobotAdapter:
     def apply_action_chunk(self, state: np.ndarray, actions: np.ndarray, *, action_horizon: int) -> list[DualArmCommandResult]:
         """Apply 40D action targets to the R5 robot.
         
-        IMPORTANT: This method receives 40D actions from ArxR5FullOutputs transform.
+        IMPORTANT: This method receives 40D actions from ArxR5FullJointOutputs transform.
         The action format includes unused TCP dimensions to maintain compatibility with
         the 40D format used in the dataset.
         

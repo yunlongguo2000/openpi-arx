@@ -578,8 +578,8 @@ class LeRobotArxLift2FullDataConfig(DataConfigFactory):
 
         # Data transforms: ARX-specific I/O conversion
         data_transforms = _transforms.Group(
-            inputs=[arx_policy.ArxLift2FullInputs()],
-            outputs=[arx_policy.ArxLift2FullOutputs()],
+            inputs=[arx_policy.ArxLift2FullJointInputs()],
+            outputs=[arx_policy.ArxLift2FullJointOutputs()],
         )
 
         # Delta actions: joints(14) + tcp(12) = delta, grippers(2) + chassis(4) = absolute
@@ -642,8 +642,8 @@ class LeRobotArxR5FullDataConfig(DataConfigFactory):
 
         # Data transforms: Use the new ArxR5Full transforms
         data_transforms = _transforms.Group(
-            inputs=[arx_policy.ArxR5FullInputs()],
-            outputs=[arx_policy.ArxR5FullOutputs()],
+            inputs=[arx_policy.ArxR5FullJointInputs()],
+            outputs=[arx_policy.ArxR5FullJointOutputs()],
         )
 
         model_transforms = ModelTransformFactory(
@@ -664,7 +664,7 @@ class LeRobotArxDeltaEEDataConfig(DataConfigFactory):
     """Data config for ARX R5 dual-arm delta-EE datasets in LeRobot format."""
 
     extra_delta_transform: bool = False
-    action_dim: int = arx_policy.ARX_ACTION_DIM
+    action_dim: int = arx_policy.ARX_DELTA_EE_ACTION_DIM
     action_sequence_keys: Sequence[str] = ("action",)
 
     state_source_key: str = "observation.state"
@@ -1329,6 +1329,7 @@ _CONFIGS = [
             pi05=True,
             action_dim=32,
             action_horizon=16,
+            max_token_len=256,
         ),
         data=LeRobotArxR5FullDataConfig(
             repo_id="/vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff",

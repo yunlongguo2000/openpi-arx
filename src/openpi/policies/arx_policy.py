@@ -39,8 +39,8 @@ def _parse_image(img) -> np.ndarray:
     return img
 
 @dataclasses.dataclass(frozen=True)
-class ArxLift2FullInputs(transforms.DataTransformFn):
-    """Convert ARX full observations to openpi model input format."""
+class ArxLift2FullJointInputs(transforms.DataTransformFn):
+    """Convert ARX full joint + chassis observations to openpi model input format."""
 
     EXPECTED_CAMERAS: ClassVar[tuple[str, ...]] = ("head", "left_wrist", "right_wrist")
 
@@ -93,8 +93,8 @@ class ArxLift2FullInputs(transforms.DataTransformFn):
         return inputs
 
 @dataclasses.dataclass(frozen=True)
-class ArxLift2FullOutputs(transforms.DataTransformFn):
-    """Convert model output actions to ARX 32D full action format."""
+class ArxLift2FullJointOutputs(transforms.DataTransformFn):
+    """Convert model output actions to ARX 32D full joint + chassis action format."""
 
     action_dim: int = 32
 
@@ -116,8 +116,7 @@ ARX_R5_ACTION_INDICES = (*range(26), 38, 39)
 ARX_R5_STATE_INDICES = (*range(54), 66, 67)
 
 @dataclasses.dataclass(frozen=True)
-@dataclasses.dataclass(frozen=True)
-class ArxR5FullInputs(transforms.DataTransformFn):
+class ArxR5FullJointInputs(transforms.DataTransformFn):
     """Convert ARX R5 observations to 56D model input format.
     
     Handles both training (68D state from dataset) and inference (56D state from robot adapter).
@@ -202,7 +201,7 @@ class ArxR5FullInputs(transforms.DataTransformFn):
         return inputs
 
 @dataclasses.dataclass(frozen=True)
-class ArxR5FullOutputs(transforms.DataTransformFn):
+class ArxR5FullJointOutputs(transforms.DataTransformFn):
     """Convert 32D model output back to ARX 40D action format."""
 
     def __call__(self, data: dict) -> dict:
@@ -224,34 +223,34 @@ class ArxR5FullOutputs(transforms.DataTransformFn):
 
 
 # === 2. Delta End-Effector Mode (14D Action, 14D State) ===
-ARX_STATE_DIM = 14
-ARX_ACTION_DIM = 14
+ARX_DELTA_EE_STATE_DIM = 14
+ARX_DELTA_EE_ACTION_DIM = 14
 # The ARX LeRobot recorder stores the full robot state as:
 # left joints 6D, right joints 6D, left EE pose 6D, right EE pose 6D,
 # left gripper state/cmd, right gripper state/cmd. The policy consumes only
 # EE poses and gripper states.
-ARX_FULL_STATE_TO_POLICY_INDICES = (*range(12, 24), 24, 26)
+ARX_RAW_TO_DELTA_EE_INDICES = (*range(12, 24), 24, 26)
 
-def make_arx_delta_ee_example() -> dict:
+def make_delta_ee_example() -> dict:
     """Creates a random input example for the ARX R5 dual-arm policy."""
     return {
-        "observation/state": np.random.rand(ARX_STATE_DIM),
+        "observation/state": np.random.rand(ARX_DELTA_EE_STATE_DIM),
         "observation/image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
         "observation/wrist_image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
         "observation/right_wrist_image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
         "prompt": "pick up the object",
     }
 
-def _parse_ee_state(state) -> np.ndarray:
+def _extract_delta_ee_state(state) -> np.ndarray:
     state = np.asarray(state, dtype=np.float32)
-    if state.shape[-1] == ARX_STATE_DIM:
+    if state.shape[-1] == ARX_DELTA_EE_STATE_DIM:
         return state
-    if state.shape[-1] <= max(ARX_FULL_STATE_TO_POLICY_INDICES):
+    if state.shape[-1] <= max(ARX_RAW_TO_DELTA_EE_INDICES):
         raise ValueError(
-            f"ARX state must be either {ARX_STATE_DIM}D policy state or full LeRobot state with at least "
-            f"{max(ARX_FULL_STATE_TO_POLICY_INDICES) + 1} dims, got shape {state.shape}"
+            f"ARX state must be either {ARX_DELTA_EE_STATE_DIM}D policy state or full LeRobot state with at least "
+            f"{max(ARX_RAW_TO_DELTA_EE_INDICES) + 1} dims, got shape {state.shape}"
         )
-    return np.take(state, ARX_FULL_STATE_TO_POLICY_INDICES, axis=-1)
+    return np.take(state, ARX_RAW_TO_DELTA_EE_INDICES, axis=-1)
 
 @dataclasses.dataclass(frozen=True)
 class ArxDeltaEEInputs(transforms.DataTransformFn):
@@ -270,7 +269,7 @@ class ArxDeltaEEInputs(transforms.DataTransformFn):
         right_wrist_image = _parse_image(data[self.right_wrist_image_key])
 
         inputs = {
-            "state": _parse_ee_state(data[self.state_key]),
+            "state": _extract_delta_ee_state(data[self.state_key]),
             "image": {
                 "base_0_rgb": base_image,
                 "left_wrist_0_rgb": left_wrist_image,
@@ -298,7 +297,7 @@ class ArxDeltaEEInputs(transforms.DataTransformFn):
 class ArxDeltaEEOutputs(transforms.DataTransformFn):
     """Convert model outputs back to the 14D ARX action format."""
 
-    action_dim: int = ARX_ACTION_DIM
+    action_dim: int = ARX_DELTA_EE_ACTION_DIM
 
     def __call__(self, data: dict) -> dict:
         return {"actions": np.asarray(data["actions"][:, : self.action_dim], dtype=np.float32)}
