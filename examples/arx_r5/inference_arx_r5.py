@@ -29,12 +29,15 @@ from openpi_client import websocket_client_policy
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
+
 class DummyArxPolicy:
     """Fixed-action policy for dry-runs."""
-    def __init__(self, action_horizon: int, action_dim: int):
+
+    def __init__(self, action_horizon: int, action_dim: int, control_mode: str):
         self.action_dim = action_dim
+        self.control_mode = control_mode
         action = np.zeros((action_horizon, action_dim), dtype=np.float32)
-        if action_dim == 14:
+        if self.control_mode == "delta_ee":
             action[:, 0] = 0.005
             action[:, 6] = -0.005
             action[:, 12] = 0.2
@@ -44,29 +47,37 @@ class DummyArxPolicy:
     def infer(self, _obs: dict[str, object]) -> dict[str, np.ndarray]:
         return {"actions": self._action_chunk.copy()}
 
+
 class RemotePolicyWrapper:
     """Wrapper for WebSocket policy server to match LocalPolicy interface."""
+
     def __init__(self, host: str, port: int):
         self.client = websocket_client_policy.WebsocketClientPolicy(host=host, port=port)
-    
+
     def infer(self, obs: dict[str, Any]) -> dict[str, np.ndarray]:
         return self.client.infer(obs)
 
+
 class ArxUnifiedInference:
+    """Unified inference for ARX robots (R5 / LIFT2, full_joint / delta_ee).
+
+    control_mode:
+      - "full_joint": 32D model output, used by pi05_arx / pi05_arx_r5_bottle_handoff / pi05_arx_lora
+      - "delta_ee":   14D model output, used by pi05_arx_delta_ee
+    """
+
     def __init__(self, config_path: Path):
         with open(config_path, "r", encoding="utf-8") as file:
             self.cfg = yaml.safe_load(file)
 
         # Inference Type
         self.inference_type = self.cfg.get("inference_type", "remote")
-        
+
         # Model & Train Config
         model_cfg = self.cfg["model"]
         self.model_name = model_cfg["name"]
-        self.is_14d = (self.model_name == "pi05_arx_delta_ee")
-        self.action_dim = 14 if self.is_14d else 32
-        
-        # Robot Config
+
+        # Robot Config -> determines control mode
         robot_cfg = self.cfg["robot"]
         self.robot_ip = robot_cfg["ip"]
         self.robot_port = int(robot_cfg.get("port", 4242))
@@ -74,24 +85,36 @@ class ArxUnifiedInference:
         self.robot_type: Literal["dual_r5", "lift"] = robot_cfg.get("robot_type", "lift")
         if self.robot_type not in ("dual_r5", "lift"):
             raise ValueError(f"Unsupported robot.robot_type: {self.robot_type}")
-        self.control_space = robot_cfg.get("control_space", "joint")
-        if self.control_space not in ("joint", "ee"):
-            raise ValueError(f"Unsupported robot.control_space: {self.control_space}")
 
-        expected_control_space = "ee" if self.is_14d else "joint"
-        if self.control_space != expected_control_space:
+        self.control_mode = robot_cfg.get("control_mode", "full_joint")
+        if self.control_mode not in ("full_joint", "delta_ee"):
+            raise ValueError(f"Unsupported robot.control_mode: {self.control_mode}")
+
+        self.action_dim = 14 if self.control_mode == "delta_ee" else 32
+
+        # Validate model <-> control_mode consistency
+        model_is_delta_ee = (self.model_name == "pi05_arx_delta_ee")
+        if model_is_delta_ee and self.control_mode != "delta_ee":
             raise ValueError(
-                f"Config mismatch: model={self.model_name} expects control_space={expected_control_space}, "
-                f"but got {self.control_space}."
+                f"Model {self.model_name} requires control_mode=delta_ee, got control_mode={self.control_mode}."
             )
-        if not self.is_14d and self.robot_type != "lift":
+        if not model_is_delta_ee and self.control_mode != "full_joint":
             raise ValueError(
-                "32D joint+chassis pipeline currently requires robot_type=lift. "
-                "Use pi05_arx_delta_ee (14D) for dual_r5."
+                f"Model {self.model_name} requires control_mode=full_joint, got control_mode={self.control_mode}."
             )
-        if self.is_14d and self.robot_type == "lift":
-            log.warning("Using 14D ee control on lift robot_type; chassis commands are not used in this mode.")
-        
+
+        # Validate robot_type <-> control_mode
+        if self.control_mode == "full_joint" and self.robot_type not in ("lift", "dual_r5"):
+            raise ValueError(
+                f"full_joint control not supported for robot_type={self.robot_type}."
+            )
+        if self.control_mode == "delta_ee" and self.robot_type not in ("lift", "dual_r5"):
+            raise ValueError(
+                f"delta_ee control not supported for robot_type={self.robot_type}."
+            )
+        if self.control_mode == "delta_ee" and self.robot_type == "lift":
+            log.warning("Using delta_ee control on lift robot_type; chassis commands are not used in this mode.")
+
         # Control Params
         control_cfg = self.cfg["control"]
         self.action_fps = float(control_cfg.get("action_fps", 15))
@@ -111,9 +134,6 @@ class ArxUnifiedInference:
             camera_rig = DummyCameraRig(width=self.image_width, height=self.image_height)
             rpc_client = ArxROS2RPCClient(ip=self.robot_ip, port=self.robot_port, autoconnect=False)
         else:
-            # You can switch to RealSenseCameraRig if needed
-            # camera_rig = RealSenseCameraRig(width=self.image_width, height=self.image_height)
-            # Default to Dummy for now if not specified, or use the one from arx_robot_adapter
             camera_rig = DummyCameraRig(width=self.image_width, height=self.image_height)
             rpc_client = ArxROS2RPCClient(ip=self.robot_ip, port=self.robot_port)
 
@@ -123,9 +143,9 @@ class ArxUnifiedInference:
             dry_run=(self.run_mode == "mock"),
         )
         log.info(
-            "Resolved robot profile: type=%s, control_space=%s, model=%s",
+            "Resolved robot profile: type=%s, control_mode=%s, model=%s",
             self.robot_type,
-            self.control_space,
+            self.control_mode,
             self.model_name,
         )
 
@@ -134,18 +154,18 @@ class ArxUnifiedInference:
             server_cfg = self.cfg["policy_server"]
             log.info(f"Connecting to Remote Policy Server at {server_cfg['host']}:{server_cfg['port']}")
             return RemotePolicyWrapper(server_cfg['host'], server_cfg['port'])
-        
+
         # Local model loading
         log.info(f"Loading Local Model: {self.model_name}")
         train_config = _config.get_config(self.model_name)
         checkpoint_dir = os.path.expanduser(self.cfg["model"]["checkpoint_dir"])
         norm_stats_dir = self.cfg["model"].get("norm_stats_dir")
         norm_stats = _normalize.load(Path(norm_stats_dir).expanduser()) if norm_stats_dir else None
-        
+
         if not Path(checkpoint_dir).exists() and self.run_mode == "mock":
             log.warning(f"Checkpoint {checkpoint_dir} not found. Using dummy policy.")
-            return DummyArxPolicy(self.action_horizon, self.action_dim)
-            
+            return DummyArxPolicy(self.action_horizon, self.action_dim, self.control_mode)
+
         return _policy_config.create_trained_policy(
             train_config,
             checkpoint_dir,
@@ -154,51 +174,24 @@ class ArxUnifiedInference:
         )
 
     def run(self) -> None:
-        """Main inference loop for ARX R5 robot.
-        
-        IMPORTANT FIXES (May 2026):
-        1. Removed non-existent 'is_14d' parameter from read_policy_observation()
-           - This parameter does not exist in the adapter signature
-           - Old code would crash with TypeError at runtime
-        
-        2. Fixed state key access to use obs["state"] directly
-           - Old code had incorrect state_key logic
-           - Now uses the correct key from robot adapter output
-        
-        3. Correctly passes state parameter to apply_action_chunk()
-           - This parameter was missing in old signature
-           - Now required for proper action execution
-        
-        Data flow:
-        - Robot observation: 56D state (joint_pvc + tcp + grippers, no velocities)
-        - Model input: 56D state (passed directly, no extraction needed)
-        - Model output: 32D actions (padded by Pi0.5)
-        - Transform: 32D → 40D (zero-pad unused dimensions)
-        - Execution: Extract joints [0-13, 14-20], grippers [38-39]
-        
-        See ADAPTATION_FIXES_SUMMARY.md for complete details.
-        """
         policy = self._load_policy()
         self.robot.connect()
         log.info("Robot Connected")
-        
+
         try:
             step = 0
             while True:
                 started = time.perf_counter()
-                
-                # 1. Read Obs (returns 56D state for R5 full joint mode)
+
                 obs = self.robot.read_policy_observation(
                     image_height=self.image_height,
                     image_width=self.image_width,
                     prompt=self.task_description,
                 )
-                
-                # 2. Infer
+
                 result = policy.infer(obs)
                 actions = np.asarray(result["actions"], dtype=np.float32)
-                
-                # 3. Apply Actions (40D from model output transform)
+
                 self.robot.apply_action_chunk(
                     obs["state"],
                     actions,
@@ -206,12 +199,11 @@ class ArxUnifiedInference:
                 )
 
                 log.info(f"Step {step} completed")
-                
+
                 step += 1
                 if self.max_steps > 0 and step >= self.max_steps:
                     break
 
-                # FPS control
                 elapsed = time.perf_counter() - started
                 sleep_time = (1.0 / self.action_fps) - elapsed
                 if sleep_time > 0:
@@ -219,12 +211,14 @@ class ArxUnifiedInference:
         finally:
             self.robot.disconnect()
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Unified ARX Inference (Local/Remote, 14D/32D)")
+    parser = argparse.ArgumentParser(description="Unified ARX Inference")
     parser.add_argument("--config", type=Path, default=Path(__file__).parent / "config" / "cfg_arx_r5_pi.yaml")
     args = parser.parse_args()
-    
+
     ArxUnifiedInference(args.config).run()
+
 
 if __name__ == "__main__":
     main()

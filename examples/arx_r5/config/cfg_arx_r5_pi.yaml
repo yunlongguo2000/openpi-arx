@@ -6,9 +6,9 @@ inference_type: "remote"  # local / remote
 
 # Model configuration
 model:
-  name: "pi05_arx_r5_bottle_handoff"  # ARX R5 full joint fine-tuned model (28D/56D)
-  checkpoint_dir: "~/models/pi05_arx_r5_bottle_handoff"  # Only for local inference
-  # norm_stats_dir: "~/models/pi05_arx_r5_bottle_handoff/assets/arx_r5_bottle_handoff" # Optional override
+  name: "pi05_arx_r5_bottle_handoff"
+  checkpoint_dir: "/vepfs-mlp2/c20250510/250404002/checkpoints/pi05_arx_r5_bottle_handoff/bottle_handoff_v1/3000"  # Trained checkpoint
+  # norm_stats_dir: "/vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff"  # Optional override
 
 # Remote Policy Server (only if inference_type is remote)
 policy_server:
@@ -17,11 +17,11 @@ policy_server:
 
 # Robot Hardware
 robot:
-  robot_type: "dual_r5"   # ARX R5 is pure dual-arm (no chassis)
+  robot_type: "dual_r5"
   ip: "127.0.0.1"
   port: 4242
   mode: "execute"         # execute / mock (dry run)
-  control_space: "joint"  # Full joint control (40D -> 28D core)
+  control_mode: "full_joint"    # full_joint / delta_ee
 
 # Image resolution
 image:
@@ -31,13 +31,13 @@ image:
 # Control loop
 control:
   action_horizon: 16
-  action_fps: 15          # Hz
+  action_fps: 15
   max_steps: 0            # 0 for infinite
 
 # Head camera extrinsic calibration
 calibration:
-  enabled: false                    # set true to enable board detection
-  params_path: ""                   # auto-detect (algorithms/calibration/calibration_params.yaml)
+  enabled: false
+  params_path: ""
 
 # Task
 task_description: "pick up the object"
