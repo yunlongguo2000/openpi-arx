@@ -17,7 +17,7 @@ policy_server:
 
 # Robot Hardware
 robot:
-  robot_type: "dual_r5"
+  robot_type: "arx_r5"
   ip: "127.0.0.1"
   port: 4242
   mode: "execute"         # execute / mock (dry run)

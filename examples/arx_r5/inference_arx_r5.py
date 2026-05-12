@@ -82,8 +82,8 @@ class ArxUnifiedInference:
         self.robot_ip = robot_cfg["ip"]
         self.robot_port = int(robot_cfg.get("port", 4242))
         self.run_mode = robot_cfg.get("mode", "execute")
-        self.robot_type: Literal["dual_r5", "lift"] = robot_cfg.get("robot_type", "lift")
-        if self.robot_type not in ("dual_r5", "lift"):
+        self.robot_type: Literal["arx_r5", "arx_lift"] = robot_cfg.get("robot_type", "arx_lift")
+        if self.robot_type not in ("arx_r5", "arx_lift"):
             raise ValueError(f"Unsupported robot.robot_type: {self.robot_type}")
 
         self.control_mode = robot_cfg.get("control_mode", "full_joint")
@@ -104,16 +104,16 @@ class ArxUnifiedInference:
             )
 
         # Validate robot_type <-> control_mode
-        if self.control_mode == "full_joint" and self.robot_type not in ("lift", "dual_r5"):
+        if self.control_mode == "full_joint" and self.robot_type not in ("arx_lift", "arx_r5"):
             raise ValueError(
                 f"full_joint control not supported for robot_type={self.robot_type}."
             )
-        if self.control_mode == "delta_ee" and self.robot_type not in ("lift", "dual_r5"):
+        if self.control_mode == "delta_ee" and self.robot_type not in ("arx_lift", "arx_r5"):
             raise ValueError(
                 f"delta_ee control not supported for robot_type={self.robot_type}."
             )
-        if self.control_mode == "delta_ee" and self.robot_type == "lift":
-            log.warning("Using delta_ee control on lift robot_type; chassis commands are not used in this mode.")
+        if self.control_mode == "delta_ee" and self.robot_type == "arx_lift":
+            log.warning("Using delta_ee control on arx_lift robot_type; chassis commands are not used in this mode.")
 
         # Control Params
         control_cfg = self.cfg["control"]
