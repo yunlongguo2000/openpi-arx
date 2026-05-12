@@ -125,6 +125,42 @@ robot:
   control_space: "joint"  # Full joint control (40D -> 28D core)
 ```
 
+### 5. **Duplicate Dataclass Decorator on ArxR5FullInputs**
+**File**: `src/openpi/policies/arx_policy.py` (line 118–119)
+
+**Issue**: `ArxR5FullInputs` had `@dataclasses.dataclass(frozen=True)` applied twice. Python 3.11 raises:
+```
+TypeError: Cannot overwrite attribute __setattr__ in class ArxR5FullInputs
+```
+This prevented importing the module entirely, blocking all training and inference.
+
+**Fix**: Remove the duplicate decorator:
+```python
+# Before (broken):
+@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
+class ArxR5FullInputs(transforms.DataTransformFn):
+
+# After (correct):
+@dataclasses.dataclass(frozen=True)
+class ArxR5FullInputs(transforms.DataTransformFn):
+```
+
+### 6. **max_token_len Too Small for 56D Discrete State**
+**File**: `src/openpi/training/config.py` — `pi05_arx_r5_bottle_handoff` TrainConfig
+
+**Issue**: pi05 with `discrete_state_input=True` tokenizes the 56D proprioceptive state as plain-text numbers. Each float produces ~3–4 PaliGemma tokens, so 56 dims × ~3.5 tokens = ~196 tokens for state alone. Adding the task prompt pushes the total to ~213 tokens, exceeding the default `max_token_len=200`. The training pipeline truncated tokens silently, losing state information.
+
+**Fix**: Set `max_token_len=256` in the model config:
+```python
+model=pi0_config.Pi0Config(
+    pi05=True,
+    action_dim=32,
+    action_horizon=16,
+    max_token_len=256,   # 200 was too small for 56D state + task prompt
+),
+```
+
 ## Data Flow After Fixes
 
 ```
@@ -153,15 +189,19 @@ robot:
 ## Remaining Tasks
 
 ### Required Before Deployment
-1. **Compute norm_stats** for the dataset:
-   ```bash
-   uv run scripts/compute_norm_stats.py --config-name pi05_arx_r5_bottle_handoff
+1. **~~Compute norm_stats~~** ✅ Done
    ```
-   This creates: `./assets/pi05_arx_r5_bottle_handoff/norm_stats.json`
+   Output: /vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff/norm_stats.json
+   ```
 
 2. **Train the model** with `pi05_arx_r5_bottle_handoff` config:
    ```bash
-   uv run python3 src/openpi/training/pi_train.py --config-name pi05_arx_r5_bottle_handoff
+   cd /root/projects/openpi-arx
+   PYTHONPATH=/root/projects/hilserl/lerobot/src:/root/projects/openpi-arx/src \
+     /vepfs-mlp2/c20250510/250404002/venvs/openpi_venv/bin/python \
+     scripts/train.py pi05_arx_r5_bottle_handoff \
+     --exp_name bottle_handoff_v1 \
+     --checkpoint_base_dir /vepfs-mlp2/c20250510/250404002/checkpoints
    ```
 
 3. **End-to-end test** (mock mode):
@@ -196,12 +236,14 @@ robot:
   - This is the core reason for the complexity vs Nero
 
 ## Files Modified
-1. ✅ `src/openpi/policies/arx_policy.py` - ArxR5FullInputs 56D support
+1. ✅ `src/openpi/policies/arx_policy.py` - ArxR5FullInputs 56D support; removed duplicate decorator
 2. ✅ `src/openpi/arx/arx_r5/arx_r5_robot_adapter.py` - apply_action_chunk signature & indices
 3. ✅ `examples/arx_r5/inference_arx_r5.py` - Correct method calls
 4. ✅ `examples/arx_r5/config/cfg_arx_r5_pi.yaml` - Model name & documentation
+5. ✅ `src/openpi/training/config.py` - max_token_len=256 for pi05_arx_r5_bottle_handoff
 
 ## Notes
 - The adaptation is now **complete** in terms of code fixes
-- Training config (`src/openpi/training/config.py` pi05_arx_r5_bottle_handoff) was already correct
+- norm_stats have been computed and are stored at the dataset root
+- Training can be launched immediately (see training command above)
 - Next phase: actual training + inference testing with real/simulated robot

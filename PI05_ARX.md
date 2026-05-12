@@ -132,20 +132,37 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_arx_lora \
 
 For pure dual-arm datasets without mobile base. Uses $\pi_{0.5}$ base with full weight updates on 28D actions.
 
+> **Environment note**: The venv at `/vepfs-mlp2/c20250510/250404002/venvs/openpi_venv`
+> uses lerobot 0.1.0 (v2.1 format) and points to the base `openpi` package. ARX R5 datasets
+> are in lerobot **v3.0 format**. Always set `PYTHONPATH` as shown below to override both.
+
 **1. Compute normalization statistics:**
 
 ```bash
-uv run scripts/compute_norm_stats.py --config-name pi05_arx_r5_bottle_handoff
+cd /root/projects/openpi-arx
+PYTHONPATH=/root/projects/hilserl/lerobot/src:/root/projects/openpi-arx/src \
+  /vepfs-mlp2/c20250510/250404002/venvs/openpi_venv/bin/python \
+  scripts/compute_norm_stats.py --config-name pi05_arx_r5_bottle_handoff
+```
+
+Norm stats are saved next to the dataset:
+```
+/vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff/norm_stats.json
 ```
 
 **2. Start training:**
 
 ```bash
-XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_arx_r5_bottle_handoff \
-    --exp-name=arx_r5_bottle_handoff_v01 --overwrite
+cd /root/projects/openpi-arx
+PYTHONPATH=/root/projects/hilserl/lerobot/src:/root/projects/openpi-arx/src \
+  XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 WANDB_MODE=disabled \
+  /vepfs-mlp2/c20250510/250404002/venvs/openpi_venv/bin/python \
+  scripts/train.py pi05_arx_r5_bottle_handoff \
+  --exp_name bottle_handoff_v1 \
+  --checkpoint_base_dir /vepfs-mlp2/c20250510/250404002/checkpoints
 ```
 
-> **Note on R5 Adaptation (May 2026)**: The ARX R5 adaptation has been verified and fixed. See [ADAPTATION_FIXES_SUMMARY.md](ADAPTATION_FIXES_SUMMARY.md) for details on critical fixes to dimension handling, gripper indices, and method signatures.
+> **Status (2026-05-11)**: norm stats computed ✅, all code bugs fixed ✅, training ready to launch.
 
 ### Configuration Notes
 
@@ -228,3 +245,7 @@ The inference loop will:
 | Images all black during inference | Expected until RealSense integration is complete; `image_mask=False` tells model to ignore them |
 | `ArxROS2RPCClient` import error | Check `_ARX_BRIDGE_PATH` in `inference_arx.py` points to `arx_vr_data_collection/` |
 | R5 inference crashes with IndexError | Ensure code is up-to-date (commit 5492c76+). Old code has dimension mismatch bug. See [ADAPTATION_FIXES_SUMMARY.md](ADAPTATION_FIXES_SUMMARY.md) |
+| `TypeError: Cannot overwrite attribute __setattr__` | Duplicate `@dataclasses.dataclass` on `ArxR5FullInputs` — fixed in latest code |
+| Token truncation warning during training | `max_token_len` too small; set `max_token_len=256` for 56D-state R5 configs |
+| `ModuleNotFoundError: lerobot.datasets` | venv lerobot uses old path; add `PYTHONPATH=/root/projects/hilserl/lerobot/src:/root/projects/openpi-arx/src` |
+| `HFValidationError: Repo id must be in the form...` | lerobot 0.1.0 doesn't support absolute paths; set PYTHONPATH as above to use hilserl lerobot |

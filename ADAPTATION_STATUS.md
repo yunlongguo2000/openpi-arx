@@ -1,6 +1,6 @@
 # ARX R5 Fine-Tuning Adaptation Status
 
-## ✅ Completed Fixes (Commit 5492c76)
+## ✅ Completed Fixes (May 2026)
 
 ### Code Quality
 - [x] Fixed ArxR5FullInputs to handle 56D inference states
@@ -9,6 +9,14 @@
 - [x] Updated cfg_arx_r5_pi.yaml model configuration
 - [x] All Python files compile without syntax errors
 - [x] Code changes preserve existing functionality for 14D EE and 59D LIFT configs
+- [x] **Fixed duplicate `@dataclasses.dataclass(frozen=True)` decorator on `ArxR5FullInputs`** (caused `TypeError: Cannot overwrite attribute __setattr__` at import time)
+- [x] **Fixed `max_token_len` too small for 56D discrete state** (increased 200 → 256; 56D state tokenizes to ~213 tokens, exceeding default of 200)
+
+### Training Pipeline
+- [x] **Norm stats computed** for `arx_r5_bottle_handoff` dataset
+  - Output: `/vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff/norm_stats.json`
+  - Full data pipeline verified end-to-end: state (56D), actions (16×32D padded), images ✓
+- [x] **Training-ready**: all blockers resolved, training command verified
 
 ### Documentation
 - [x] Created ADAPTATION_FIXES_SUMMARY.md detailing all changes
@@ -22,19 +30,21 @@
 
 ## ⏳ Remaining Tasks (Before Deployment)
 
-### 1. Compute norm_stats (Required)
-```bash
-uv run scripts/compute_norm_stats.py --config-name pi05_arx_r5_bottle_handoff
+### 1. ~~Compute norm_stats~~ ✅ Done
 ```
-**Output**: `./assets/pi05_arx_r5_bottle_handoff/norm_stats.json`
-**Status**: Not yet done (dataset exists but norm_stats missing)
+Output: /vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff/norm_stats.json
+```
 
-### 2. Train Model
+### 2. Train Model ⏳
 ```bash
-uv run python3 src/openpi/training/pi_train.py --config-name pi05_arx_r5_bottle_handoff
+cd /root/projects/openpi-arx
+PYTHONPATH=/root/projects/hilserl/lerobot/src:/root/projects/openpi-arx/src \
+  /vepfs-mlp2/c20250510/250404002/venvs/openpi_venv/bin/python \
+  scripts/train.py pi05_arx_r5_bottle_handoff \
+  --exp_name bottle_handoff_v1 \
+  --checkpoint_base_dir /vepfs-mlp2/c20250510/250404002/checkpoints
 ```
-**Expected**: Model checkpoint with correct data normalization
-**Status**: Awaiting training infrastructure setup
+**Status**: All blockers resolved; ready to launch
 
 ### 3. Dry-Run Inference Test
 ```bash
@@ -43,8 +53,7 @@ uv run python3 examples/arx_r5/inference_arx_r5.py \
   --robot-mode mock \
   --max-steps 100
 ```
-**Expected**: No crashes, proper action sequence generation
-**Status**: Blocked by lerobot dependency path issue in this environment
+**Status**: Blocked pending trained checkpoint
 
 ### 4. Live Robot Testing
 - [ ] Deploy to R5 robot with real camera feeds
@@ -61,9 +70,12 @@ uv run python3 examples/arx_r5/inference_arx_r5.py \
 - [x] Gripper indices are 38, 39: ✓ (not 26, 27)
 - [x] inference_arx_r5.py uses correct method signatures: ✓
 - [x] cfg_arx_r5_pi.yaml references pi05_arx_r5_bottle_handoff: ✓
+- [x] No duplicate dataclass decorator on ArxR5FullInputs: ✓
+- [x] max_token_len=256 accommodates 56D discrete state: ✓
 
-### Data-Level Verification ⏸️
-- [ ] norm_stats computed for dataset (manual: required)
+### Data-Level Verification ✅
+- [x] norm_stats computed for dataset: ✓ (`norm_stats.json` written)
+- [x] Full transform pipeline verified: state (56D), actions (16×32D), images (3×HWC): ✓
 - [ ] Model training completes (infrastructure: required)
 - [ ] Inference produces 40D actions (testing: required)
 - [ ] Actions correctly extract to 28D/grippers (testing: required)
@@ -93,10 +105,23 @@ uv run python3 examples/arx_r5/inference_arx_r5.py \
 
 ## 💡 Next Actions
 
-1. **Immediate**: Compute norm_stats when infrastructure available
-2. **Short-term**: Run training on dataset with fixed adaptation
-3. **Medium-term**: Deploy and test on actual R5 robot
-4. **Long-term**: Validate task performance (bottle handoff success rate)
+1. **Immediate**: Launch training with the command in Section 2 above
+2. **Short-term**: Deploy and test on actual R5 robot
+3. **Medium-term**: Validate task performance (bottle handoff success rate)
+
+## 📝 Environment Notes (vepfs server)
+
+The pre-installed venv at `/vepfs-mlp2/c20250510/250404002/venvs/openpi_venv` points to
+`/root/projects/openpi` (base openpi) and includes lerobot 0.1.0 (v2.1 dataset format), which
+is **incompatible** with the v3.0 datasets used here. Always prepend:
+
+```
+PYTHONPATH=/root/projects/hilserl/lerobot/src:/root/projects/openpi-arx/src
+```
+
+This ensures Python resolves:
+- `lerobot.*` → `/root/projects/hilserl/lerobot` (v3.0 format, local absolute path support)
+- `openpi.*` → `/root/projects/openpi-arx/src` (ARX-specific policies and configs)
 
 ## 📝 Technical Notes
 
@@ -122,6 +147,6 @@ uv run python3 examples/arx_r5/inference_arx_r5.py \
 - Impact: Gripper commands were going to wrong dimensions in old code
 
 ---
-**Last Updated**: After commit 5492c76
+**Last Updated**: 2026-05-11
 **Adaptation Scope**: pi05_arx_r5_bottle_handoff (28D full joint + 2D gripper)
-**Status**: Code fixes complete, awaiting training & validation
+**Status**: Code + data pipeline complete; training ready to launch
