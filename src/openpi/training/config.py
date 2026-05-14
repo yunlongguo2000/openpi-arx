@@ -1333,6 +1333,7 @@ _CONFIGS = [
         ),
         data=LeRobotArxR5FullDataConfig(
             repo_id="/vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff",
+            assets=AssetsConfig(asset_id="arx_r5_bottle_handoff"),
             base_config=DataConfig(prompt_from_task=True),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader(

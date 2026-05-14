@@ -7,20 +7,19 @@ inference_type: "remote"  # local / remote
 # Model configuration
 model:
   name: "pi05_arx_r5_bottle_handoff"
-  checkpoint_dir: "/vepfs-mlp2/c20250510/250404002/checkpoints/pi05_arx_r5_bottle_handoff/bottle_handoff_v1/3000"  # Trained checkpoint
-  # norm_stats_dir: "/vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff"  # Optional override
+  checkpoint_dir: "/home/yunlong/ARX_new/pi05_deploy/checkpoints/bottle_handoff_v2/13000"  # Trained checkpoint
 
 # Remote Policy Server (only if inference_type is remote)
 policy_server:
-  host: "192.168.110.26"
+  host: "127.0.0.1"
   port: 8000
 
 # Robot Hardware
 robot:
   robot_type: "arx_r5"
-  ip: "127.0.0.1"
+  ip: "10.10.10.2"
   port: 4242
-  mode: "execute"         # execute / mock (dry run)
+  mode: "execute"          # execute / mock / read_only
   control_mode: "full_joint"    # full_joint / delta_ee
 
 # Image resolution
@@ -32,12 +31,18 @@ image:
 control:
   action_horizon: 16
   action_fps: 15
-  max_steps: 0            # 0 for infinite
+  max_steps: 3000            # 0 for infinite
 
 # Head camera extrinsic calibration
+cameras:
+  enabled: true
+  head_serial: "218622271302"
+  left_wrist_serial: "218622274803"
+  right_wrist_serial: "218622278394"
+
 calibration:
   enabled: false
   params_path: ""
 
 # Task
-task_description: "pick up the object"
+task_description: "Hand the bottle from the left arm to the right arm and place it in the basket on the right."

@@ -115,45 +115,23 @@ class ArxR5RobotAdapter:
         state = state_56d_from_full_state(full_state)
         return make_arx_r5_observation(state, images, prompt, height=image_height, width=image_width)
 
+    def apply_single_action(self, action: np.ndarray) -> DualArmCommandResult:
+        """Send a single 40D action step to the robot immediately."""
+        left_joints = action[0:7]
+        right_joints = action[14:21]
+        left_gripper = float(action[38])
+        right_gripper = float(action[39])
+
+        if not self._dry_run and self._client is not None:
+            self._client.set_full_command(left_joints, right_joints, 0.0, 0.0, 0.0, 0.0)
+            self._client.set_left_gripper(left_gripper)
+            self._client.set_right_gripper(right_gripper)
+
+        return DualArmCommandResult(command=action, ack={"accepted": True})
+
     def apply_action_chunk(self, state: np.ndarray, actions: np.ndarray, *, action_horizon: int) -> list[DualArmCommandResult]:
-        """Apply 40D action targets to the R5 robot.
-        
-        IMPORTANT: This method receives 40D actions from ArxR5FullJointOutputs transform.
-        The action format includes unused TCP dimensions to maintain compatibility with
-        the 40D format used in the dataset.
-        
-        Action layout (40D from transform):
-        - [0-13]: Left arm joint targets (7 DOF)
-        - [14-25]: Right arm joint targets (7 DOF + padding)
-        - [26-31]: Left TCP position (unused in pure joint mode)
-        - [32-37]: Right TCP position (unused in pure joint mode)
-        - [38]: Left gripper command
-        - [39]: Right gripper command
-        
-        CRITICAL FIX (May 2026): Gripper indices corrected from 26,27 to 38,39.
-        Old code read from wrong indices, sending gripper commands to wrong motors.
-        See ADAPTATION_FIXES_SUMMARY.md for details.
-        
-        Args:
-            state: 56D robot state (for future use, e.g., delta TCP conversion)
-            actions: [action_horizon, 40] action array from model output transform
-            action_horizon: number of actions to execute
-        """
+        """Apply a full action chunk (used by legacy / replay code)."""
         results = []
         for i in range(action_horizon):
-            action = actions[i]
-            
-            # Extract joint targets (correct indices for 40D format)
-            left_joints = action[0:7]
-            right_joints = action[14:21]
-            # Extract gripper commands (FIXED: indices 38,39, not 26,27)
-            left_gripper = float(action[38])
-            right_gripper = float(action[39])
-
-            if not self._dry_run and self._client is not None:
-                self._client.set_full_command(left_joints, right_joints, 0.0, 0.0, 0.0, 0.0)
-                self._client.set_left_gripper(left_gripper)
-                self._client.set_right_gripper(right_gripper)
-            
-            results.append(DualArmCommandResult(command=action, ack={"accepted": True}))
+            results.append(self.apply_single_action(actions[i]))
         return results

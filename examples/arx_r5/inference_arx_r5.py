@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import argparse
 import logging
+import threading
 import time
 import os
 import sys
 from pathlib import Path
 from typing import Any, Literal
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+log = logging.getLogger(__name__)
 
 import numpy as np
 import yaml
@@ -19,15 +23,13 @@ _ARX_BRIDGE_PATH = os.path.abspath(os.path.join(
 if _ARX_BRIDGE_PATH not in sys.path:
     sys.path.insert(0, _ARX_BRIDGE_PATH)
 
-from openpi.arx.arx_r5.arx_r5_robot_adapter import ArxR5RobotAdapter as ArxRobotAdapter, DummyCameraRig, RealSenseCameraRig
+from openpi.arx.arx_r5.arx_r5_robot_adapter import ArxR5RobotAdapter as ArxRobotAdapter, DummyCameraRig
 from openpi.arx.arx_ros2_rpc_client import ArxROS2RPCClient
+from openpi.arx.realsense_camera_rig import RealSenseCameraRig
 from openpi.policies import policy_config as _policy_config
 from openpi.shared import normalize as _normalize
 from openpi.training import config as _config
 from openpi_client import websocket_client_policy
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-log = logging.getLogger(__name__)
 
 
 class DummyArxPolicy:
@@ -58,6 +60,62 @@ class RemotePolicyWrapper:
         return self.client.infer(obs)
 
 
+class ActionBuffer:
+    """Thread-safe receding horizon action buffer."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._actions: np.ndarray | None = None
+        self._idx = 0
+
+    def put(self, actions: np.ndarray) -> None:
+        with self._lock:
+            self._actions = np.asarray(actions, dtype=np.float32)
+            self._idx = 0
+
+    def pop(self) -> np.ndarray | None:
+        with self._lock:
+            if self._actions is None or self._idx >= self._actions.shape[0]:
+                return None
+            action = self._actions[self._idx].copy()
+            self._idx += 1
+            return action
+
+    @property
+    def remaining(self) -> int:
+        with self._lock:
+            if self._actions is None:
+                return 0
+            return max(0, self._actions.shape[0] - self._idx)
+
+
+class _InferJob:
+    """Background inference job run in a separate thread."""
+
+    def __init__(self, policy, obs: dict[str, Any]):
+        self._policy = policy
+        self._obs = obs
+        self._result: np.ndarray | None = None
+        self._exception: Exception | None = None
+        self._done = threading.Event()
+
+    def run(self) -> None:
+        try:
+            result = self._policy.infer(self._obs)
+            self._result = np.asarray(result["actions"], dtype=np.float32)
+        except Exception as e:
+            self._exception = e
+        finally:
+            self._done.set()
+
+    def result(self, timeout: float | None = None) -> np.ndarray:
+        if not self._done.wait(timeout=timeout):
+            raise TimeoutError("Inference timed out")
+        if self._exception is not None:
+            raise self._exception
+        return self._result
+
+
 class ArxUnifiedInference:
     """Unified inference for ARX robots (R5 / LIFT2, full_joint / delta_ee).
 
@@ -85,6 +143,9 @@ class ArxUnifiedInference:
         self.robot_type: Literal["arx_r5", "arx_lift2"] = robot_cfg.get("robot_type", "arx_lift2")
         if self.robot_type not in ("arx_r5", "arx_lift2"):
             raise ValueError(f"Unsupported robot.robot_type: {self.robot_type}")
+        if self.run_mode not in ("execute", "mock", "read_only"):
+            raise ValueError(f"Unsupported robot.mode: {self.run_mode}")
+        self.read_only = (self.run_mode == "read_only")
 
         self.control_mode = robot_cfg.get("control_mode", "full_joint")
         if self.control_mode not in ("full_joint", "delta_ee"):
@@ -129,18 +190,37 @@ class ArxUnifiedInference:
         # Task
         self.task_description = self.cfg.get("task_description", "")
 
-        # Initialize Hardware
-        if self.run_mode == "mock":
-            camera_rig = DummyCameraRig(width=self.image_width, height=self.image_height)
-            rpc_client = ArxROS2RPCClient(ip=self.robot_ip, port=self.robot_port, autoconnect=False)
+        # Initialize Camera Rig
+        cameras_cfg = self.cfg.get("cameras", {})
+        if cameras_cfg.get("enabled", False):
+            camera_rig = RealSenseCameraRig(
+                head_serial=cameras_cfg["head_serial"],
+                left_wrist_serial=cameras_cfg["left_wrist_serial"],
+                right_wrist_serial=cameras_cfg["right_wrist_serial"],
+                width=self.image_width,
+                height=self.image_height,
+                fps=30,
+            )
+            log.info("Using RealSense cameras")
         else:
             camera_rig = DummyCameraRig(width=self.image_width, height=self.image_height)
+            log.info("Using dummy cameras (black images)")
+
+        # Initialize Hardware
+        if self.run_mode == "mock":
+            rpc_client = ArxROS2RPCClient(ip=self.robot_ip, port=self.robot_port, autoconnect=False)
+            adapter_dry_run = True
+        elif self.run_mode == "read_only":
             rpc_client = ArxROS2RPCClient(ip=self.robot_ip, port=self.robot_port)
+            adapter_dry_run = False  # Connect and read real state
+        else:
+            rpc_client = ArxROS2RPCClient(ip=self.robot_ip, port=self.robot_port)
+            adapter_dry_run = False
 
         self.robot = ArxRobotAdapter(
             rpc_client=rpc_client,
             camera_rig=camera_rig,
-            dry_run=(self.run_mode == "mock"),
+            dry_run=adapter_dry_run,
         )
         log.info(
             "Resolved robot profile: type=%s, control_mode=%s, model=%s",
@@ -174,40 +254,83 @@ class ArxUnifiedInference:
         )
 
     def run(self) -> None:
+        REPLAN_EARLY = 0   # NEVER re-plan until buffer fully consumed
         policy = self._load_policy()
         self.robot.connect()
         log.info("Robot Connected")
 
+        if self.read_only:
+            log.info("READ-ONLY mode: state from robot, actions NOT sent")
+
+        buffer = ActionBuffer()
+        pending_infer: _InferJob | None = None
+        pending_actions: np.ndarray | None = None
+
+        def _start_inference():
+            obs = self.robot.read_policy_observation(
+                image_height=self.image_height,
+                image_width=self.image_width,
+                prompt=self.task_description,
+            )
+            job = _InferJob(policy, obs)
+            threading.Thread(target=job.run, daemon=True).start()
+            return job
+
         try:
             step = 0
+            # First inference
+            job = _start_inference()
+            buffer.put(job.result(timeout=30.0))
+            log.info("Initial inference complete, buffer filled")
+
             while True:
-                started = time.perf_counter()
+                cycle_start = time.perf_counter()
 
-                obs = self.robot.read_policy_observation(
-                    image_height=self.image_height,
-                    image_width=self.image_width,
-                    prompt=self.task_description,
-                )
+                # Start next inference when buffer is low (but don't swap yet!)
+                if pending_infer is None and pending_actions is None and buffer.remaining <= REPLAN_EARLY:
+                    pending_infer = _start_inference()
 
-                result = policy.infer(obs)
-                actions = np.asarray(result["actions"], dtype=np.float32)
+                # Pop one action from buffer
+                action = buffer.pop()
+                if action is None:
+                    # Buffer exhausted — swap in new actions
+                    if pending_actions is not None:
+                        buffer.put(pending_actions)
+                        pending_actions = None
+                    elif pending_infer is not None:
+                        buffer.put(pending_infer.result(timeout=30.0))
+                        pending_infer = None
+                    else:
+                        buffer.put(_start_inference().result(timeout=30.0))
+                    action = buffer.pop()
+                    assert action is not None
 
-                self.robot.apply_action_chunk(
-                    obs["state"],
-                    actions,
-                    action_horizon=self.action_horizon,
-                )
-
-                log.info(f"Step {step} completed")
+                if self.read_only:
+                    if step % 10 == 0:
+                        log.info("Step %d: left_gr=%.3f right_gr=%.3f",
+                                 step, float(action[38]), float(action[39]))
+                else:
+                    self.robot.apply_single_action(action)
 
                 step += 1
                 if self.max_steps > 0 and step >= self.max_steps:
                     break
 
-                elapsed = time.perf_counter() - started
+                # Collect background inference → store as pending
+                if pending_infer is not None and pending_infer._done.is_set():
+                    try:
+                        pending_actions = pending_infer.result(timeout=0)
+                        pending_infer = None
+                    except Exception:
+                        log.warning("Background inference failed")
+                        pending_infer = None
+
+                # Control frequency
+                elapsed = time.perf_counter() - cycle_start
                 sleep_time = (1.0 / self.action_fps) - elapsed
                 if sleep_time > 0:
                     time.sleep(sleep_time)
+
         finally:
             self.robot.disconnect()
 

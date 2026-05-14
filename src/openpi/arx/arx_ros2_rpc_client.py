@@ -72,13 +72,7 @@ class ArxROS2RPCClient:
             return False
 
     def disconnect(self):
-        try:
-            self._call("disconnect")
-            log.info("Disconnected from ARX LIFT2 system")
-        except Exception as exc:
-            log.warning("Error disconnecting (continuing): %s", exc)
-        finally:
-            self.close()
+        self.close()
 
     def is_connected(self) -> bool:
         try:
