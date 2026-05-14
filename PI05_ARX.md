@@ -164,13 +164,112 @@ PYTHONPATH=/root/projects/hilserl/lerobot/src:/root/projects/openpi-arx/src \
 
 > **Status (2026-05-11)**: norm stats computed ✅, all code bugs fixed ✅, training ready to launch.
 
-### Configuration Notes
+### Training Configuration Reference
 
-Edit `TrainConfig` in [`config.py`](src/openpi/training/config.py) to set:
-- `repo_id` — your HuggingFace/local LeRobot dataset path
-- `weight_loader` — base checkpoint path (default: `gs://openpi-assets/checkpoints/pi05_base/params`)
-- `num_train_steps` — default 30,000
-- `batch_size` — default 32
+All `TrainConfig` parameters are defined in [`config.py`](src/openpi/training/config.py). Below is the comprehensive reference.
+
+#### Model Architecture
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `pi05` | `bool` | `False` | 启用 pi05 模式（离散化状态 token、adaRMSNorm 注入 timestep） |
+| `paligemma_variant` | `Variant` | `"gemma_2b"` | VLM backbone 型号（见下方冻结/微调说明） |
+| `action_expert_variant` | `Variant` | `"gemma_300m"` | Action Expert 型号 |
+| `action_dim` | `int` | `32` | 输出动作维度 |
+| `action_horizon` | `int` | `50` | 预测动作序列长度 |
+| `max_token_len` | `int` | `200`（pi05: 256） | 离散化状态的最大 token 长度 |
+| `dtype` | `str` | `"bfloat16"` | 模型计算精度 |
+
+#### 冻结 / 全量 / LoRA 微调
+
+这是最容易被忽略的配置。冻结由 `paligemma_variant` 和 `action_expert_variant` **隐式控制**，没有显式的 `freeze=True/False` 开关。
+
+`Variant` 可选值（定义在 `gemma.py:55`）：
+- `"gemma_2b"` — 全量训练 VLM
+- `"gemma_2b_lora"` — 冻结 VLM backbone，只训 LoRA 适配器
+- `"gemma_300m"` — 全量训练 Action Expert
+- `"gemma_300m_lora"` — 冻结 AE backbone，只训 LoRA 适配器
+
+| paligemma_variant | action_expert_variant | VLM 状态 | Action Expert 状态 |
+|---|---|---|---|
+| `"gemma_2b"` | `"gemma_300m"` | 全量 | 全量 |
+| `"gemma_2b_lora"` | `"gemma_300m_lora"` | 冻结 + LoRA | 冻结 + LoRA |
+| `"gemma_2b_lora"` | `"gemma_300m"` | 冻结 + LoRA | 全量 |
+| `"gemma_2b"` | `"gemma_300m_lora"` | 全量 | 冻结 + LoRA |
+
+`freeze_filter` 参数（默认 `nnx.Nothing`）由 `Pi0Config.get_freeze_filter()` 自动生成：若 variant 含 `_lora`，freeze 对应模块的 base weights，但排除 LoRA 参数（`.*lora.*`）使其仍可训练。`trainable_filter = nnx.All(nnx.Param, nnx.Not(freeze_filter))`。
+
+**项目中各配置的微调方式：**
+
+| 配置名 | 微调方式 | VLM | Action Expert |
+|--------|---------|-----|---------------|
+| `pi05_arx_r5_bottle_handoff` | **全量** | 全量 | 全量 |
+| `pi05_arx` | 全量 | 全量 | 全量 |
+| `pi05_arx_delta_ee` | 全量 | 全量 | 全量 |
+| `pi05_arx_lora` | LoRA | 冻结 | 冻结 |
+| `pi05_full_droid_finetune` | 全量 | 全量 | 全量 |
+| `pi05_droid_finetune` | LoRA | 冻结 | 冻结 |
+| `pi05_droid_finetune_franka` | LoRA | 冻结 | 冻结 |
+| `pi0_libero_low_mem_finetune` | LoRA | 冻结 | 冻结 |
+| `pi0_fast_libero_low_mem_finetune` | LoRA | 冻结 | 全量 |
+
+#### 优化器 & 学习率
+
+| 参数 | 子参数 | 默认值 | 说明 |
+|------|--------|--------|------|
+| `lr_schedule` | `CosineDecaySchedule` | — | 余弦衰减调度 |
+| | `warmup_steps` | `1000` | 线性预热步数 |
+| | `peak_lr` | `2.5e-5` | 峰值学习率 |
+| | `decay_lr` | `2.5e-6` | 最终衰减学习率 |
+| `optimizer` | `AdamW` | — | AdamW 优化器 |
+| | `b1` | `0.9` | 一阶矩衰减 |
+| | `b2` | `0.95` | 二阶矩衰减 |
+| | `eps` | `1e-8` | 数值稳定性 |
+| | `weight_decay` | `1e-10` | 权重衰减 |
+| | `clip_gradient_norm` | `1.0` | 全局梯度裁剪 |
+
+#### 训练控制
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `num_train_steps` | `30000` | 总训练步数 |
+| `batch_size` | `32` | 全局 batch size |
+| `fsdp_devices` | `1` | FSDP 分片设备数（`>1` 启用多卡 FSDP） |
+| `seed` | `42` | 随机种子 |
+| `log_interval` | `100` | 每 N 步记录一次指标到 WandB |
+| `save_interval` | `1000` | 每 N 步保存 checkpoint |
+| `keep_period` | `5000` | 步数为该值整数倍的 checkpoint 不自动删除 |
+| `ema_decay` | `0.99` | 指数滑动平均衰减率 |
+| `overwrite` | `False` | 覆盖已有 checkpoint 目录 |
+| `resume` | `False` | 从最新 checkpoint 恢复训练 |
+| `wandb_enabled` | `True` | 启用 WandB 日志 |
+| `project_name` | `"openpi"` | WandB 项目名 |
+| `num_workers` | `2` | DataLoader 工作进程数 |
+
+#### 数据配置 (DataConfig)
+
+| 参数 | 说明 |
+|------|------|
+| `repo_id` | 数据集路径（HuggingFace repo ID 或本地绝对路径） |
+| `prompt_from_task` | `True` 时从数据集 parquet 的 `task` 列读取 prompt |
+| `default_prompt` | 若 `prompt_from_task=False`，使用此固定 prompt |
+
+**R5 数据变换链路：**
+
+```
+Dataset (68D state / 40D action) 
+  → RepackTransform (key mapping)
+  → ArxR5FullJointInputs:
+      - 68D state → 56D (via ARX_R5_STATE_INDICES)  [训练]
+      - 56D state → 56D (identity)                    [推理]
+      - 40D action → 28D (via ARX_R5_ACTION_INDICES)
+  → Normalize (norm_stats)
+  → Tokenize (discrete state tokens)
+  → PadStatesAndActions → 32D action
+
+Inference output:
+  32D → ArxR5FullJointOutputs → 40D → Robot adapter
+```
 
 ---
 
