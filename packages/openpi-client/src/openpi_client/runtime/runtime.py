@@ -2,6 +2,8 @@ import logging
 import threading
 import time
 
+import numpy as np
+
 from openpi_client.runtime import agent as _agent
 from openpi_client.runtime import environment as _environment
 from openpi_client.runtime import subscriber as _subscriber
@@ -29,10 +31,10 @@ class Runtime:
         self._in_episode = False
         self._episode_steps = 0
 
-    def run(self) -> None:
+    def run(self, prompt: str | None = None) -> None:
         """Runs the runtime loop continuously until stop() is called or the environment is done."""
         for _ in range(self._num_episodes):
-            self._run_episode()
+            self._run_episode(prompt)
 
         # Final reset, this is important for real environments to move the robot to its home position.
         self._environment.reset()
@@ -47,7 +49,7 @@ class Runtime:
         """Marks the end of an episode."""
         self._in_episode = False
 
-    def _run_episode(self) -> None:
+    def _run_episode(self, prompt: str | None = None) -> None:
         """Runs a single episode."""
         logging.info("Starting episode...")
         self._environment.reset()
@@ -61,7 +63,7 @@ class Runtime:
         last_step_time = time.time()
 
         while self._in_episode:
-            self._step()
+            self._step(prompt)
             self._episode_steps += 1
 
             # Sleep to maintain the desired frame rate
@@ -77,9 +79,14 @@ class Runtime:
         for subscriber in self._subscribers:
             subscriber.on_episode_end()
 
-    def _step(self) -> None:
+    def _step(self, prompt: str | None = None) -> None:
         """A single step of the runtime loop."""
         observation = self._environment.get_observation()
+        if prompt:
+            observation["prompt"] = prompt
+        # BGR (OpenCV) to RGB conversion for wrist/exterior cameras
+        for cam_name in observation.get("images", {}):
+            observation["images"][cam_name] = observation["images"][cam_name][::-1]
         action = self._agent.get_action(observation)
         self._environment.apply_action(action)
 
