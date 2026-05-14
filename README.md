@@ -12,10 +12,22 @@ For all models, we provide _base model_ checkpoints, pre-trained on 10k+ hours o
 This is an experiment: $\pi_0$ was developed for our own robots, which differ from the widely used platforms such as [ALOHA](https://tonyzhaozh.github.io/aloha/) and [DROID](https://droid-dataset.github.io/), and though we are optimistic that researchers and practitioners will be able to run creative new experiments adapting $\pi_0$ to their own platforms, we do not expect every such attempt to be successful. All this is to say: $\pi_0$ may or may not work for you, but you are welcome to try it and see!
 
 ## openpi on Franka
-Details about deploy openpi models on Franka can be found [HERE](PI05_FRANKA.md).
+Details about deploy openpi models on Franka can be found [HERE](examples/franka/README.md).
 
-## openpi on ARX LIFT2
-Details about finetuning and deploying openpi models on the ARX LIFT2 dual-arm mobile robot can be found [HERE](PI05_ARX.md).
+## openpi on ARX
+
+This repository supports two ARX hardware configurations:
+
+| Configuration | State Dim | Action Dim | TrainConfig |
+|---------------|-----------|------------|-------------|
+| **ARX LIFT2** (mobile base + dual arms) | 59D | 32D | `pi05_arx` |
+| **ARX R5** (pure dual-arm) | 56D | 28D | `pi05_arx_r5_bottle_handoff` |
+
+### Documentation
+- **[examples/arx_r5/README.md](examples/arx_r5/README.md)** — Finetuning & inference guide (EN)
+- **[examples/arx_r5/README_zh.md](examples/arx_r5/README_zh.md)** — 中文版（Chinese translation）
+- **[examples/arx_r5/REMOTE_INFERENCE.md](examples/arx_r5/REMOTE_INFERENCE.md)** — R5 remote inference deployment (中文)
+- **[examples/arx_r5/ADAPTATION.md](examples/arx_r5/ADAPTATION.md)** — R5 adaptation fixes, metrics & migration guide (中文)
 
 
 ## Updates

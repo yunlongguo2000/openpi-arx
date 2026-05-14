@@ -339,11 +339,11 @@ The inference loop will:
 | `norm_stats` missing on robot machine | Copy `norm_stats.json` from GPU machine after running `compute_norm_stats.py` |
 | Robot RPC connection failed | Ensure `arx_ros2_rpc_server.py` is running on robot and IP/port match config file |
 | Action dimension mismatch (LIFT2) | `ArxOutputs.action_dim` must be 32; verify dataset `info.json` matches |
-| Action dimension mismatch (R5) | For R5, model outputs 32D (padded); adapter transforms to 40D (indices 38,39 for grippers). See [ADAPTATION_FIXES_SUMMARY.md](ADAPTATION_FIXES_SUMMARY.md) |
+| Action dimension mismatch (R5) | For R5, model outputs 32D (padded); adapter transforms to 40D (indices 38,39 for grippers). See [ADAPTATION.md](ADAPTATION_FIXES_SUMMARY.md) |
 | Training OOM | Use `pi05_arx_lora` config, or set `--fsdp-devices <n>` for multi-GPU |
 | Images all black during inference | Expected until RealSense integration is complete; `image_mask=False` tells model to ignore them |
 | `ArxROS2RPCClient` import error | Check `_ARX_BRIDGE_PATH` in `inference_arx.py` points to `arx_vr_data_collection/` |
-| R5 inference crashes with IndexError | Ensure code is up-to-date (commit 5492c76+). Old code has dimension mismatch bug. See [ADAPTATION_FIXES_SUMMARY.md](ADAPTATION_FIXES_SUMMARY.md) |
+| R5 inference crashes with IndexError | Ensure code is up-to-date (commit 5492c76+). Old code has dimension mismatch bug. See [ADAPTATION.md](ADAPTATION_FIXES_SUMMARY.md) |
 | `TypeError: Cannot overwrite attribute __setattr__` | Duplicate `@dataclasses.dataclass` on `ArxR5FullInputs` — fixed in latest code |
 | Token truncation warning during training | `max_token_len` too small; set `max_token_len=256` for 56D-state R5 configs |
 | `ModuleNotFoundError: lerobot.datasets` | venv lerobot uses old path; add `PYTHONPATH=/root/projects/hilserl/lerobot/src:/root/projects/openpi-arx/src` |
