@@ -1332,11 +1332,11 @@ _CONFIGS = [
             max_token_len=256,
         ),
         data=LeRobotArxR5FullDataConfig(
-            repo_id="/vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff",
+            repo_id="/vepfs-mlp2/c20250510/250404002/pi05_arx_r5/datasets/arx_r5_bottle_handoff",
             base_config=DataConfig(prompt_from_task=True),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader(
-            "/vepfs-mlp2/c20250510/250404002/pi05_models/pi05_models/pi05_base/params",
+            "/vepfs-mlp2/c20250510/250404002/pi05_arx_r5/models/pi05_models/pi05_base/params",
         ),
         num_train_steps=20_000,
         batch_size=32,
