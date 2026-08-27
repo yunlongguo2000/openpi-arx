@@ -3,7 +3,7 @@
 ## Overview
 This document summarizes the fixes applied to complete the ARX R5 fine-tuning adaptation for the `pi05_arx_r5_bottle_handoff` config. The adaptation enables Pi0.5 to work with the full 28D joint control space on ARX R5 robots.
 
-**Dataset**: `/vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff/`
+**Dataset**: `/vepfs-mlp2/c20250510/250404002/pi05_arx_r5/datasets/arx_r5_bottle_handoff/`
 - 15 episodes, 10055 frames
 - Action format: 40D (14D left joints + 12D unused + 14D right joints + 2D grippers)
 - State format: 68D (42D joint_pvc + 12D tcp + 12D delta_tcp + 2D grippers)
@@ -191,17 +191,17 @@ model=pi0_config.Pi0Config(
 ### Required Before Deployment
 1. **~~Compute norm_stats~~** ✅ Done
    ```
-   Output: /vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff/norm_stats.json
+   Output: /vepfs-mlp2/c20250510/250404002/pi05_arx_r5/datasets/arx_r5_bottle_handoff/norm_stats.json
    ```
 
 2. **Train the model** with `pi05_arx_r5_bottle_handoff` config:
    ```bash
    cd /root/projects/openpi-arx
    PYTHONPATH=/root/projects/hilserl/lerobot/src:/root/projects/openpi-arx/src \
-     /vepfs-mlp2/c20250510/250404002/venvs/openpi_venv/bin/python \
+     /vepfs-mlp2/c20250510/250404002/_envs/venv/openpi_venv/bin/python \
      scripts/train.py pi05_arx_r5_bottle_handoff \
      --exp_name bottle_handoff_v1 \
-     --checkpoint_base_dir /vepfs-mlp2/c20250510/250404002/checkpoints
+     --checkpoint_base_dir /vepfs-mlp2/c20250510/250404002/pi05_arx_r5/checkpoints
    ```
 
 3. **End-to-end test** (mock mode):

@@ -132,7 +132,7 @@ XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 uv run scripts/train.py pi05_arx_lora \
 
 For pure dual-arm datasets without mobile base. Uses $\pi_{0.5}$ base with full weight updates on 28D actions.
 
-> **Environment note**: The venv at `/vepfs-mlp2/c20250510/250404002/venvs/openpi_venv`
+> **Environment note**: The venv at `/vepfs-mlp2/c20250510/250404002/_envs/venv/openpi_venv`
 > uses lerobot 0.1.0 (v2.1 format) and points to the base `openpi` package. ARX R5 datasets
 > are in lerobot **v3.0 format**. Always set `PYTHONPATH` as shown below to override both.
 
@@ -141,13 +141,13 @@ For pure dual-arm datasets without mobile base. Uses $\pi_{0.5}$ base with full 
 ```bash
 cd /root/projects/openpi-arx
 PYTHONPATH=/root/projects/hilserl/lerobot/src:/root/projects/openpi-arx/src \
-  /vepfs-mlp2/c20250510/250404002/venvs/openpi_venv/bin/python \
+  /vepfs-mlp2/c20250510/250404002/_envs/venv/openpi_venv/bin/python \
   scripts/compute_norm_stats.py --config-name pi05_arx_r5_bottle_handoff
 ```
 
 Norm stats are saved next to the dataset:
 ```
-/vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff/norm_stats.json
+/vepfs-mlp2/c20250510/250404002/pi05_arx_r5/datasets/arx_r5_bottle_handoff/norm_stats.json
 ```
 
 **2. Start training:**
@@ -156,10 +156,10 @@ Norm stats are saved next to the dataset:
 cd /root/projects/openpi-arx
 PYTHONPATH=/root/projects/hilserl/lerobot/src:/root/projects/openpi-arx/src \
   XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 WANDB_MODE=disabled \
-  /vepfs-mlp2/c20250510/250404002/venvs/openpi_venv/bin/python \
+  /vepfs-mlp2/c20250510/250404002/_envs/venv/openpi_venv/bin/python \
   scripts/train.py pi05_arx_r5_bottle_handoff \
   --exp_name bottle_handoff_v1 \
-  --checkpoint_base_dir /vepfs-mlp2/c20250510/250404002/checkpoints
+  --checkpoint_base_dir /vepfs-mlp2/c20250510/250404002/pi05_arx_r5/checkpoints
 ```
 
 > **Status (2026-05-11)**: norm stats computed ✅, all code bugs fixed ✅, training ready to launch.

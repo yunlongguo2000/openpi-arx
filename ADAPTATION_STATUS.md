@@ -16,7 +16,7 @@
 
 ### Training Pipeline
 - [x] **Norm stats computed** for `arx_r5_bottle_handoff` dataset (v2, after task fix)
-  - Output: `/vepfs-mlp2/c20250510/250404002/arx_r5_datasets/arx_r5_bottle_handoff/norm_stats.json`
+  - Output: `/vepfs-mlp2/c20250510/250404002/pi05_arx_r5/datasets/arx_r5_bottle_handoff/norm_stats.json`
   - Full data pipeline verified end-to-end: state (56D), actions (16×32D padded), images ✓
 - [x] **Training completed**: `pi05_arx_r5_bottle_handoff`, exp `bottle_handoff_v2`
   - 20,000 steps, 4-GPU FSDP
@@ -109,7 +109,7 @@ python examples/arx_r5/inference_arx_r5.py \
 
 ## 📝 Environment Notes (vepfs server)
 
-The pre-installed venv at `/vepfs-mlp2/c20250510/250404002/venvs/openpi_venv` points to
+The pre-installed venv at `/vepfs-mlp2/c20250510/250404002/_envs/venv/openpi_venv` points to
 `/root/projects/openpi` (base openpi) and includes lerobot 0.1.0 (v2.1 dataset format), which
 is **incompatible** with the v3.0 datasets used here. Always prepend:
 
