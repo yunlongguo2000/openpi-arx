@@ -242,7 +242,7 @@ wheels = [
 [[package]]
 name = "arx-client"
 version = "0.1.0"
-source = { git = "https://github.com/yunlongguo2000/ARX_new.git?subdirectory=packages%2Farx_client&rev=e44224bb5350ee6c22fbd41c6dee58590dbe7b68#e44224bb5350ee6c22fbd41c6dee58590dbe7b68" }
+source = { git = "https://github.com/yunlongguo2000/arx-platform.git?subdirectory=packages%2Farx_client&rev=e44224bb5350ee6c22fbd41c6dee58590dbe7b68#e44224bb5350ee6c22fbd41c6dee58590dbe7b68" }
 dependencies = [
     { name = "numpy" },
 ]
@@ -3927,7 +3927,7 @@ rlds = [
 
 [package.metadata]
 requires-dist = [
-    { name = "arx-client", extras = ["transport"], git = "https://github.com/yunlongguo2000/ARX_new.git?subdirectory=packages%2Farx_client&rev=e44224bb5350ee6c22fbd41c6dee58590dbe7b68" },
+    { name = "arx-client", extras = ["transport"], git = "https://github.com/yunlongguo2000/arx-platform.git?subdirectory=packages%2Farx_client&rev=e44224bb5350ee6c22fbd41c6dee58590dbe7b68" },
     { name = "augmax", specifier = ">=0.3.4" },
     { name = "beartype", specifier = "==0.19.0" },
     { name = "dm-tree", specifier = ">=0.1.8" },

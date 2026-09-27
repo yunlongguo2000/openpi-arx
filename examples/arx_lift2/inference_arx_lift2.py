@@ -8,7 +8,7 @@ ARX Pi0.5 推理主循环
   4. 逐步执行动作到机器人
 
 用法:
-  cd /home/yunlong/ARX_new/openpi_arx
+  cd /path/to/openpi-arx
   python inference/inference_arx.py --config inference/cfg_arx_pi.yaml
 
 前置条件:
