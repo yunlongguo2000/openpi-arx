@@ -15,14 +15,6 @@ log = logging.getLogger(__name__)
 import numpy as np
 import yaml
 
-# ARX Bridge Path
-_ARX_BRIDGE_PATH = os.path.abspath(os.path.join(
-    os.path.dirname(__file__), "..", "..", "..",
-    "ros2_bridge",
-))
-if _ARX_BRIDGE_PATH not in sys.path:
-    sys.path.insert(0, _ARX_BRIDGE_PATH)
-
 from openpi.arx.arx_r5.arx_r5_robot_adapter import ArxR5RobotAdapter as ArxRobotAdapter, DummyCameraRig
 from openpi.arx.arx_ros2_rpc_client import ArxROS2RPCClient
 from openpi.arx.realsense_camera_rig import RealSenseCameraRig

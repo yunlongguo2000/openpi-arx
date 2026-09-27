@@ -38,12 +38,12 @@ dependencies = [
     "rich>=14.0.0",
     "polars>=1.30.0",
     "pyrealsense2",
-    "zerorpc",
+    "arx-client[transport]>=0.1.0,<0.2",
 ]
 
 
 [project.urls]
-Repository = "https://github.com/Shenzhaolong1330/openpi-franka.git"
+Repository = "https://github.com/yunlongguo2000/openpi-arx.git"
 
 [dependency-groups]
 dev = [
@@ -71,10 +71,11 @@ override-dependencies = [
 ]
 
 [tool.uv.sources]
+arx-client = { git = "https://github.com/yunlongguo2000/ARX_new.git", rev = "e44224bb5350ee6c22fbd41c6dee58590dbe7b68", subdirectory = "packages/arx_client" }
 openpi-client = { workspace = true }
 # lerobot = { git = "https://github.com/huggingface/lerobot", rev = "0cf864870cf29f4738d3ade893e6fd13fbd7cdb5" }
 # lerobot = { git = "https://github.com/huggingface/lerobot", rev = "da5d2f3e9187fa4690e6667fe8b294cae49016d6" }
-lerobot = {path = "/home/deepcybo/lerobot"}
+lerobot = { git = "https://github.com/huggingface/lerobot", rev = "da5d2f3e9187fa4690e6667fe8b294cae49016d6" }
 dlimp = { git = "https://github.com/kvablack/dlimp", rev = "ad72ce3a9b414db2185bc0b38461d4101a65477a" }
 
 [tool.uv.workspace]
@@ -144,4 +145,4 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 markers = ["manual: should be run manually."]
-testpaths = ["src", "scripts", "packages"]
+testpaths = ["src", "scripts", "packages", "tests/platform"]
